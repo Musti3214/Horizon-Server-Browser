@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://musti3214.github.io/Horizon-Server-Browser/sitemap.xml

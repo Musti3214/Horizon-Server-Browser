@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "settings": {"modern": true, "online_directory": false},
+  "view": {"search": "friends", "tab": "favorites", "sort": "ping"},
+  "metadata": {
+    "localhost:25565": {"favorite": true, "tags": ["friends"], "auth": "offline"}
+  },
+  "presets": {"Friends": {"search": "friends"}},
+  "future_top_level": {"retained": true}
+}

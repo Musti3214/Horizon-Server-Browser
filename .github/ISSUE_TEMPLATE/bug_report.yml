@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible problem with Server Browser.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Server Browser and Horizon versions
+      description: Include the mod version and the native build or Horizon commit.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the steps, expected result and actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional evidence
+      description: Attach a screenshot or a short error excerpt. Remove account details, private addresses and personal notes.
