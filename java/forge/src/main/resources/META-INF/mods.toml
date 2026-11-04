@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[66,)"
+license="MIT"
+clientSideOnly=true
+issueTrackerURL="https://github.com/Musti3214/Horizon-Server-Browser/issues"
+[[mods]]
+modId="server_browser"
+version="${version}"
+displayName="Server Atlas"
+displayURL="https://musti3214.github.io/Horizon-Server-Browser/"
+authors="shuab"
+logoFile="assets/server_browser/icon.png"
+description='''A familiar Minecraft server browser with public discovery, filters, favorites and local notes.'''
+[[dependencies.server_browser]]
+modId="forge"
+mandatory=true
+versionRange="[66.1.5,67)"
+ordering="NONE"
+side="CLIENT"
+[[dependencies.server_browser]]
+modId="minecraft"
+mandatory=true
+versionRange="[26.3,26.4)"
+ordering="NONE"
+side="CLIENT"

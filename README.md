@@ -1,9 +1,10 @@
-# Minecraft Server Browser
+# Server Atlas
 
 **Find your next Minecraft server. Keep your favorite worlds close.**
 
-A native Rust mod for Horizon with a familiar Minecraft interface, public server
-discovery, practical filters and a personal server list. Built by shuab.
+A Minecraft Java server browser for **Horizon, Fabric and Forge**, with a familiar Minecraft interface, public discovery, practical filters and a personal server list. Built by shuab. Formerly Horizon Server Browser.
+
+<img src="docs/server-atlas-icon.png" alt="Server Atlas compass logo" width="128" height="128">
 
 [Website & screenshots](https://musti3214.github.io/Horizon-Server-Browser/) ·
 [Download 2.1.0](https://musti3214.github.io/Horizon-Server-Browser/downloads/server-browser-2.1.0.hnmod) ·
@@ -37,8 +38,8 @@ If you would like to support development: [Support this project on Ko-fi](https:
 | Platform | Status | Download |
 | --- | --- | --- |
 | Horizon, Minecraft Java 26.3 | **2.1.0 · native Rust mod**; tested on Windows x64 | `.hnmod` |
-| Fabric | Planned | No release yet |
-| Forge | Planned | No release yet |
+| Fabric · Minecraft 26.3 | **2.2.0 public beta** · Java 25 · Loader 0.20.1+ | [Fabric JAR](downloads/server-browser-fabric-2.2.0+mc26.3.jar) |
+| Forge · Minecraft 26.3 | **2.2.0 public beta** · Java 25 · Forge 66.1.5+ | [Forge JAR](downloads/server-browser-forge-2.2.0+mc26.3.jar) |
 
 The Horizon package uses the official native-mod build process. It includes its
 Rust sources and requires no companion program or separately installed host patch.
@@ -69,6 +70,10 @@ Function screenshots use disposable example profiles and local status fixtures.
 The discovery image comes from a real public-directory test. No private player
 worlds, accounts or personal server lists appear in these images.
 
+## Install Fabric or Forge
+
+Minecraft **26.3 / Java 25**: install Fabric Loader **0.20.1+** or Minecraft Forge **66.1.5+**, put only the matching JAR in that instance’s `mods` folder and open **Multiplayer**. Required Fabric API modules are bundled. No Horizon build is needed for these Java editions. They are public betas; see [Java installation and validation](java/README.md) and [test limits](java/VALIDATION.md).
+
 ## Install in Horizon
 
 1. Download `server-browser-2.1.0.hnmod` and select a dedicated Horizon instance.
@@ -88,13 +93,13 @@ only to the named sources; normal status pings contact the servers being checked
 The mod uses Horizon's existing login and connection implementation.
 
 Feedback and server-proposal drafts can be saved locally. **Automatic email
-delivery is not configured in 2.1.0.** Fabric and Forge are planned ports.
+delivery is not configured in 2.1.0.** Fabric and Forge 2.2.0 are now available as public betas.
 The web catalog is a dated address list and does not claim live player counts.
 Read [privacy](docs/PRIVACY.md) and [server sources](docs/SERVER-SOURCES.md).
 
 ## Development
 
-`mod/` contains the original Rust implementation, translations, native manifest
+`java/` contains the original shared Java code, Fabric and Forge build configurations and integration suite (96 checks per loader). `mod/` contains the original Rust implementation, translations, native manifest
 and official-mixin helpers. `website/` contains the static website and all 13 real
 screenshots. `downloads/` contains the tested package and SHA-256 checksum.
 

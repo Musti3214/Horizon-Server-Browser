@@ -1,0 +1,27 @@
+{
+  "java": {
+    "version": "2.2.0",
+    "minecraft": "26.3",
+    "java": 25,
+    "files": [
+      {
+        "name": "server-browser-fabric-2.2.0+mc26.3.jar",
+        "loader": "fabric",
+        "size": 1568455,
+        "sha256": "e052510b60b6013e1583bf87b6a383290e314f3ccd89f30b7ba7da110937261a"
+      },
+      {
+        "name": "server-browser-forge-2.2.0+mc26.3.jar",
+        "loader": "forge",
+        "size": 1428540,
+        "sha256": "465c51a14fa6da206ba6a8275fcf6681f943b706e35b9a3c19c10b2e0e00d942"
+      }
+    ]
+  },
+  "horizon": {
+    "name": "server-browser-2.1.0.hnmod",
+    "version": "2.1.0",
+    "size": 162503,
+    "sha256": "bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58"
+  }
+}

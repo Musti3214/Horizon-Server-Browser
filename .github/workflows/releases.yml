@@ -1,0 +1,22 @@
+name: Publish verified mod downloads
+on:
+  push:
+    branches: [main]
+    paths: ['downloads/**', 'tools/publish_release.py', '.github/workflows/releases.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: publish-mod-releases
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate source and exact release files
+        run: python3 tools/validate_public.py
+      - name: Publish immutable native and Java release assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 tools/publish_release.py

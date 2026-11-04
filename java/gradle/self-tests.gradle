@@ -1,0 +1,14 @@
+sourceSets {
+    selfTest {
+        java.srcDir '../tests'
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+tasks.register('selfTest', JavaExec) {
+    dependsOn tasks.named('selfTestClasses')
+    classpath = sourceSets.selfTest.runtimeClasspath
+    mainClass = 'io.github.musti3214.serverbrowser.CoreSelfTest'
+    args layout.buildDirectory.dir('self-test-' + System.currentTimeMillis()).get().asFile.absolutePath
+}
+tasks.named('check') { dependsOn tasks.named('selfTest') }

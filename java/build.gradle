@@ -1,0 +1,9 @@
+plugins { id 'base' }
+allprojects {
+    group = 'io.github.musti3214.serverbrowser'
+    version = '2.2.0'
+    // Minecraft and our JDK API calls require Java 25 even though Mixin classes use bytecode 21.
+    configurations.configureEach {
+        attributes.attribute(org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+    }
+}

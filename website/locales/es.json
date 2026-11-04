@@ -1,27 +1,399 @@
 {
-"name":"Español","og":"es_ES",
-"routes":["","capturas","servidores","descargar","instalacion","proyecto"],
-"pages":["El mod","Capturas","Buscar servidores","Descargar","Instalar","Proyecto y privacidad"],
-"titles":["Server Browser Mod — Encuentra servidores de Minecraft","Capturas de Server Browser — Interfaz real en Horizon","Buscar servidores Minecraft — Survival, Skyblock y PvP","Descargar Server Browser 2.1.0 — Mod para Horizon","Instalar Server Browser — Guía del mod nativo de Horizon","Server Browser — Proyecto, fuentes y privacidad"],
-"descriptions":["Encuentra servidores de Minecraft Java con Server Browser: búsqueda, filtros, favoritos y notas. Mod nativo gratuito para Horizon. Fabric y Forge previstos.","Explora 13 capturas reales del mod Server Browser en Horizon: listas transparentes, búsqueda, favoritos, filtros y ajustes. Imágenes a tamaño completo.","Busca entre 2.835 direcciones públicas de servidores Minecraft Java. Descubre Survival, Skyblock, PvP y minijuegos y copia la dirección para jugar.","Descarga Server Browser 2.1.0 para Horizon y Minecraft Java 26.3. Mod nativo gratuito en Rust con código fuente, suma de verificación y guía.","Aprende a instalar y activar Server Browser en Horizon, compilar el mod nativo y resolver los avisos de mod desactivado o instalado sin compilar.","Conoce Server Browser, las fuentes públicas de servidores Minecraft, los datos locales, las pruebas y los futuros ports para Fabric y Forge."],
-"skip":"Saltar al contenido","navigation":"Navegación principal","open_menu":"Abrir navegación","download_button":"Descargar el mod","horizon_download":"Descargar para Horizon","explore":"Buscar servidores","view_mod":"Ver el mod",
-"hero_h1":["Más Minecraft.","Menos búsquedas."],"hero_lead":"Tu próximo mundo empieza con una buena lista de servidores. Descubre, filtra y guarda tus favoritos. Dentro del juego, con una interfaz familiar de Minecraft.",
-"availability":"Gratis · Minecraft Java 26.3 · Windows x64","recorded":"CAPTURADO EN HORIZON","enlarge":"Ver a tamaño completo","product_caption":"La interfaz que encontrarás de verdad en el juego.","all_images":"Ver las 13 capturas",
-"facts":[["2.835","direcciones públicas de servidores"],["Dentro del juego","Tu lista. Tu interfaz de Minecraft."],["Guardado local","Servidores, favoritos y notas"]],
-"game_eyebrow":"Familiar hasta el último detalle.","game_h2":["Hecho para Minecraft.","Y para tu forma de jugar."],"game_intro":"Botones reales de Minecraft. Una lista transparente y despejada. Y herramientas que facilitan encontrar tu próximo servidor.",
-"story1_label":"01 / TUS MUNDOS","story1_h3":["Un lugar para tus","servidores favoritos."],"story1_text":"Favoritos, grupos y notas personales convierten una lista larga en tu propia selección. Todo permanece en tu perfil local del juego.","story1_points":["Busca nombres, etiquetas y notas","Encuentra tus favoritos con un clic","Edita nombres, direcciones y detalles"],
-"story2_label":"02 / TU SELECCIÓN","story2_h3":["Menos desplazamientos.","Mejores descubrimientos."],"story2_text":"Filtra por modo de juego, versión, jugadores o ping. Guarda tu selección en un perfil para tu próxima partida con amigos.","functions_link":"Ver las funciones en acción",
-"gallery_eyebrow":"Capturado directamente en el juego","gallery_h2":"Mira más de cerca.","gallery_intro":"Gestiona servidores, ajusta filtros y personaliza el navegador. Trece capturas reales del juego para explorar a tamaño completo.","gallery_link":"Explorar toda la galería",
-"insights_h1":["Una vista clara.","De tu próximo mundo."],"insights_lead":"Trece capturas reales del mod compilado en Horizon. Desde la primera búsqueda hasta tus perfiles de filtros, descubre cómo funciona Server Browser.","capture_note":"Capturas del juego · Vista a tamaño completo","gallery_filters":["Todas las capturas","Descubrir","Gestionar","Personalizar"],"capture_context_title":["El producto real.","Con datos de ejemplo."],"capture_context":["Las imágenes muestran el mod nativo 2.1.0 compilado en Horizon para Minecraft Java 26.3. Las listas personales usan perfiles temporales con servidores locales de prueba, notas y etiquetas. No aparecen mundos ni listas privadas de jugadores.","La imagen del directorio procede de una prueba real en línea. Todas las capturas se realizaron el 3 de noviembre de 2026. Los estados y las cifras de jugadores reflejan ese momento; las imágenes no están editadas. Las capturas muestran la interfaz del juego en alemán. Cambiar el idioma de la web no traduce las imágenes."],
-"directory_eyebrow":"Tu próximo servidor te espera","directory_h1":["Tu modo de juego.","Tu próxima comunidad."],"directory_intro":"Busca entre 2.835 direcciones públicas de servidores Java. Explora Survival, Skyblock, PvP y minijuegos y copia la dirección que te interese.","directory_home_intro":"Prueba la búsqueda aquí mismo. El mod comprueba el estado actual de los servidores dentro del juego.","directory_note":"Catálogo público de direcciones del 3 de noviembre de 2026. Las direcciones, la disponibilidad y las versiones compatibles pueden cambiar.","catalog_edition":"Java Edition · 2.835 direcciones","preview":"Vista previa web","search_label":"Buscar servidores de Minecraft","search_placeholder":"Busca un nombre, dirección o modo de juego…","filter_labels":["Todos","Survival","Skyblock","PvP","Minijuegos"],"sort_label":"Ordenar servidores","sort_options":["Orden del catálogo","Nombre: A a Z"],"all_servers":"Ver todos los servidores","in_game":"Descubrir en el juego","sources_link":"Ver las fuentes",
-"directory_details":[["Encuentra servidores Survival","Construye en grupo, reúne recursos o explora un mundo nuevo. El filtro Survival incluye las etiquetas SMP y Vanilla. Comprueba la versión y las reglas antes de entrar."],["Explora Skyblock y PvP","Empieza en una isla o busca tu próximo desafío. Usa los filtros Skyblock y PvP; PvP también incluye las etiquetas Factions y Anarchy."],["Juega a minijuegos en compañía","Encuentra Bedwars, Skywars y más con la búsqueda o el filtro Minijuegos. Esta web ofrece direcciones; el mod comprueba jugadores y ping en Horizon."]],
-"platform_eyebrow":"Hoy Horizon. Más por venir.","platform_h2":["Listo para Horizon.","Seguimos trabajando."],"platform_intro":"El mod nativo en Rust ya está disponible. Están previstos ports independientes para Fabric y Forge.","platform_text":["Mod nativo en Rust para Minecraft Java 26.3. Un paquete .hnmod con el código fuente incluido.","Está prevista una versión independiente para Fabric. Fabric no puede cargar el archivo de Horizon.","También está previsto un port para Forge. Todavía no hay fecha de lanzamiento."],"available":"Disponible · 2.1.0","planned":"Previsto","development":"Estado del desarrollo","download_details":"Ver descarga",
-"faq_eyebrow":"Antes de empezar","faq_title":"Conviene saberlo.","faq":[["¿Qué es Server Browser?","Un mod gratuito que organiza la lista de servidores de Minecraft Java. Descubre servidores públicos y gestiona favoritos, notas, grupos y direcciones propias en Horizon."],["¿Qué plataformas son compatibles?","La versión 2.1.0 está disponible como .hnmod nativo de Horizon para Minecraft Java 26.3, probado en Windows x64. Los ports para Fabric y Forge están previstos, sin descarga todavía."],["¿Tengo que compilar en cada inicio?","No. Horizon integra los mods nativos en un cliente y reutiliza esa compilación. Cambiar el mod o el conjunto de mods activos requiere otra compilación."],["¿La lista de la web está en directo?","La web muestra un catálogo de direcciones del 3 de noviembre de 2026, sin cifras de jugadores en directo. El mod comprueba los estados dentro del juego. La conexión también depende de la versión, la autenticación y las reglas."],["¿Se publican mis servidores?","No. Tus servidores y notas permanecen en local. Compilar el mod no publica tu lista. Los borradores de comentarios se guardan localmente; el envío automático por correo no está configurado."]],
-"closing_eyebrow":"Tu próxima conexión","closing_h2":["Un buen servidor.","Una nueva aventura."],"closing_text":"Descubre nuevos mundos. Conserva tus servidores favoritos. Empieza tu próxima aventura con Server Browser.","closing_note":"Gratis · Versión 2.1.0 · Fabric y Forge previstos",
-"download_eyebrow":"Una descarga. Nuevas posibilidades.","download_h1":["Tu lista de servidores.","Una mejora cuidada."],"download_intro":"Descarga el mod nativo actual para Horizon. Fabric y Forge necesitarán implementaciones independientes.","release_title":"Server Browser para Horizon","release_text":"Paquete nativo en Rust con búsqueda, filtros, favoritos y gestión de servidores propios. Gratuito bajo licencia MIT, con código fuente incluido.","release_labels":["Versión","Minecraft Java","Archivo","Probado en"],"release_size":".hnmod · 162,5 KB","release_build":"Activa el mod nativo en Horizon, compílalo una vez e inicia la instancia resultante.","checksum":"Verificar SHA-256","install_link":"Guía de instalación","mail_limit":"Los comentarios se guardan como borradores locales. El envío automático por correo no está configurado en esta versión.","install_banner_title":"¿Instalado, pero sin compilar?","install_banner_text":"Iniciar una versión normal de Horizon no integra el mod. La guía te ayuda a elegir la instancia correcta.",
-"guide_eyebrow":"Instalar el mod de Horizon","guide_h1":["Configúralo una vez.","Y empieza a jugar."],"guide_intro":"Horizon compila el .hnmod nativo dentro de su propio cliente. Sigue estos cuatro pasos en una instancia dedicada.","guide_steps":[["Descarga el mod","Descarga server-browser-2.1.0.hnmod. Contiene la implementación nativa en Rust para Horizon; no es un .jar para Fabric o Forge."],["Elige la instancia correcta","Abre la carpeta de juego de esa instancia y coloca el archivo en horizon-native-mods. Guarda cualquier paquete anterior de Server Browser fuera de esa carpeta."],["Activa y compila el mod","En la página Mods del launcher, activa server_browser 2.1.0. Elige la opción normal de compilar para la revisión probada y revisa los mods. El jugador decide si acepta «I trust these mods: build»."],["Inicia la compilación terminada","Espera a que termine, cierra el cliente antiguo e inicia esa misma instancia. Abre Multijugador. Actualizar el mod requiere otra compilación; los inicios normales reutilizan la existente."]],"guide_help":[["«No native mod is enabled»","Un archivo instalado puede seguir desactivado. Activa server_browser en la página Mods de la instancia seleccionada."],["«Installed, not built into this game»","El cliente abierto se compiló sin esta versión. Termina la compilación nativa y reinicia la instancia resultante."],["Revisión incompatible o E_INVALID_HELPER","Usa la opción normal de compilar con las revisiones exactas del paquete. La opción de recompilar la última Nightly puede cambiarlas. Otros mods pueden requerir revisiones distintas; prueba este mod por separado."]],"native_notice":"Los mods nativos se ejecutan con tus permisos de usuario. La primera compilación descarga herramientas y puede tardar varios minutos. Se necesitan tus propios recursos de Minecraft, que no se distribuyen con el mod.",
-"project_eyebrow":"Los detalles, con claridad","project_h1":["Un proyecto pequeño.","Una dirección clara."],"project_intro":"Server Browser acorta el camino entre buscar un servidor y jugar en compañía. Aquí encontrarás la versión actual, las fuentes y el tratamiento de los datos.","project_sections":[["El proyecto","Proyecto comunitario independiente desarrollado para shuab. El paquete nativo de Horizon 2.1.0 usa licencia MIT, incluye las fuentes Rust y está dirigido a Minecraft Java 26.3. Probado en Windows x64. No requiere un parche separado del host ni un programa complementario."],["Versión y desarrollo","La versión superó 44 pruebas Rust, Clippy estricto, una compilación del cliente y pruebas reales aisladas de juego, interfaz y directorios. Fabric y Forge son ports previstos. El envío automático por correo sigue sin configurarse."],["Origen de las direcciones","El catálogo fechado combina 488 direcciones investigadas anteriormente con 2.347 direcciones públicas Java adicionales y únicas de Modrinth: 2.835 en total. La documentación pública de Serverify permitió identificar esa fuente; la integración con la API es independiente."],["Descubrimiento en el mod","minecraftserve.rs y Modrinth tienen cachés independientes de cinco minutos y un límite persistente de una petición pública por fuente y minuto. No se envían búsquedas, servidores personales, notas ni nombres de jugadores a estas APIs. La opción Desactivado se respeta. Las consultas normales de estado contactan directamente con los servidores."],["Datos de la web","Las búsquedas y filtros se ejecutan en tu navegador. Una búsqueda compartida puede aparecer en la URL y en los registros del alojamiento. El código del sitio no incluye analítica, anuncios ni fuentes externas. El portapapeles se usa al pulsar Copiar dirección."],["Imágenes y nombres","Las imágenes del producto son capturas sin editar del mod compilado. Los perfiles de ejemplo contienen servidores personales y notas inventados; la imagen de descubrimiento procede de una prueba real en línea. Los nombres Minecraft, Horizon y de los modloaders pertenecen a sus propietarios."]],
-"legal":"Proyecto comunitario independiente para Minecraft Java. Sin afiliación ni respaldo de Mojang, Microsoft o los proyectos de modloaders de Minecraft.","footer_note":"Diseñado con cuidado. Para nuevas aventuras.","language":"Idioma","more_links":"Más páginas","back_home":"Volver al inicio","not_found":"Esta página aún está por descubrir.","not_found_text":"Esta página no existe. Tu próximo servidor te espera en el inicio.","lightbox_close":"Cerrar imagen","lightbox_previous":"Imagen anterior","lightbox_next":"Imagen siguiente","lightbox_original":"Abrir imagen original","lightbox_title":"Server Browser · Capturado en Horizon",
-"client":{"copied":"Dirección copiada. ¡Disfruta de la partida!","copy_fallback":"Selecciona la dirección y cópiala manualmente.","copy_label":"Copiar dirección de {name}","copy_title":"Copiar dirección del servidor","count_one":"{count} dirección de servidor","count_many":"{count} direcciones de servidores","load_more":"Mostrar más servidores ({count})","empty_title":"No hay servidores que coincidan.","empty_text":"Prueba otro nombre o elimina un filtro de modo de juego.","catalog_error":"No se pudo cargar el catálogo completo. La vista previa sigue disponible. Inténtalo de nuevo más tarde.","catalog_preview":"Vista previa del catálogo","gallery_count_one":"{count} captura","gallery_count_many":"{count} capturas"},
-"gallery":[["Tus mundos, bien organizados.","Lista de servidores y detalles","La lista transparente en Horizon, con búsqueda, favoritos y detalles del servidor seleccionado."],["Descubre sin salir del juego.","Directorio público","Captura real del directorio combinado de minecraftserve.rs y Modrinth. Los estados reflejan el momento de la captura."],["Una palabra. Los servidores adecuados.","Búsqueda por etiquetas","Buscar survival limita la lista de ejemplo. También puedes buscar nombres, direcciones, MOTD y notas personales."],["Tus favoritos, juntos.","Favoritos","Una pestaña reúne los servidores marcados con estrella. Los favoritos se guardan en el perfil local."],["Solo lo que encaja ahora.","Estado y versión","Combina disponibilidad, versiones compatibles, plazas libres y otros criterios en la interfaz real."],["Tus límites. Tu selección.","Jugadores y ping","Define el mínimo de jugadores o el ping máximo con los campos reales del filtro."],["Más cerca de tu comunidad.","Etiquetas, idioma y región","Las etiquetas, idioma, región y grupo ayudan a organizar y filtrar tu lista."],["Más que una dirección.","Editar servidor","Gestiona nombre, dirección, etiquetas y notas en un lugar. Los datos mostrados son ejemplos."],["Un lugar para cada detalle.","Grupos y metadatos","Añade grupo, idioma y región al servidor. Los datos personales permanecen en local."],["Un orden con sentido.","Ordenación","Ordena por nombre, ping o jugadores, o conserva tu propio orden."],["Guarda tu selección para después.","Perfiles de filtros","Los perfiles guardados reutilizan los ajustes en otras partidas. Aquí se prepara uno nuevo."],["A tu manera.","Ajustes","Controla la apariencia, las actualizaciones, las peticiones de estado y el directorio en línea."],["Una idea para la próxima versión.","Propuestas locales","Guarda una propuesta de servidor como borrador local. El envío automático por correo no está configurado."]]
+  "name": "Español",
+  "og": "es_ES",
+  "routes": [
+    "",
+    "capturas",
+    "servidores",
+    "descargar",
+    "instalacion",
+    "proyecto"
+  ],
+  "pages": [
+    "El mod",
+    "Capturas",
+    "Buscar servidores",
+    "Descargar",
+    "Instalar",
+    "Proyecto y privacidad"
+  ],
+  "titles": [
+    "Server Atlas Mod — Encuentra servidores de Minecraft",
+    "Capturas de Server Atlas — Interfaz real en Horizon",
+    "Buscar servidores Minecraft — Survival, Skyblock y PvP",
+    "Server Atlas — Descargar · Horizon, Fabric & Forge",
+    "Server Atlas — Instalar Fabric y Forge · Horizon",
+    "Server Atlas — Proyecto, fuentes y privacidad"
+  ],
+  "descriptions": [
+    "Encuentra servidores de Minecraft Java en el juego con Server Atlas: búsqueda, filtros, favoritos y notas para Horizon, Fabric y Forge. Gratis y de código abierto.",
+    "Explora 13 capturas reales del mod Server Atlas en Horizon: listas transparentes, búsqueda, favoritos, filtros y ajustes. Imágenes a tamaño completo.",
+    "Busca entre 2.835 direcciones públicas de servidores Minecraft Java. Descubre Survival, Skyblock, PvP y minijuegos y copia la dirección para jugar.",
+    "Descarga Server Atlas para Horizon, Fabric o Forge: busca servidores de Minecraft Java 26.3 con filtros y favoritos. Gratis y de código abierto.",
+    "Aprende a instalar y activar Server Atlas en Horizon, compilar el mod nativo y resolver los avisos de mod desactivado o instalado sin compilar.",
+    "Encuentra servidores de Minecraft Java en el juego con Server Atlas: búsqueda, filtros, favoritos y notas para Horizon, Fabric y Forge. Gratis y de código abierto."
+  ],
+  "skip": "Saltar al contenido",
+  "navigation": "Navegación principal",
+  "open_menu": "Abrir navegación",
+  "download_button": "Descargar el mod",
+  "horizon_download": "Descargar para Horizon",
+  "explore": "Buscar servidores",
+  "view_mod": "Ver el mod",
+  "hero_h1": [
+    "Más Minecraft.",
+    "Menos búsquedas."
+  ],
+  "hero_lead": "Tu próximo mundo empieza con una buena lista de servidores. Descubre, filtra y guarda tus favoritos. Dentro del juego, con una interfaz familiar de Minecraft.",
+  "availability": "Horizon 2.1 · Fabric / Forge 2.2 beta · Minecraft 26.3",
+  "recorded": "CAPTURADO EN HORIZON",
+  "enlarge": "Ver a tamaño completo",
+  "product_caption": "La interfaz que encontrarás de verdad en el juego.",
+  "all_images": "Ver las 13 capturas",
+  "facts": [
+    [
+      "2.835",
+      "direcciones públicas de servidores"
+    ],
+    [
+      "Dentro del juego",
+      "Tu lista. Tu interfaz de Minecraft."
+    ],
+    [
+      "Guardado local",
+      "Servidores, favoritos y notas"
+    ]
+  ],
+  "game_eyebrow": "Familiar hasta el último detalle.",
+  "game_h2": [
+    "Hecho para Minecraft.",
+    "Y para tu forma de jugar."
+  ],
+  "game_intro": "Botones reales de Minecraft. Una lista transparente y despejada. Y herramientas que facilitan encontrar tu próximo servidor.",
+  "story1_label": "01 / TUS MUNDOS",
+  "story1_h3": [
+    "Un lugar para tus",
+    "servidores favoritos."
+  ],
+  "story1_text": "Favoritos, grupos y notas personales convierten una lista larga en tu propia selección. Todo permanece en tu perfil local del juego.",
+  "story1_points": [
+    "Busca nombres, etiquetas y notas",
+    "Encuentra tus favoritos con un clic",
+    "Edita nombres, direcciones y detalles"
+  ],
+  "story2_label": "02 / TU SELECCIÓN",
+  "story2_h3": [
+    "Menos desplazamientos.",
+    "Mejores descubrimientos."
+  ],
+  "story2_text": "Filtra por modo de juego, versión, jugadores o ping. Guarda tu selección en un perfil para tu próxima partida con amigos.",
+  "functions_link": "Ver las funciones en acción",
+  "gallery_eyebrow": "Capturado directamente en el juego",
+  "gallery_h2": "Mira más de cerca.",
+  "gallery_intro": "Gestiona servidores, ajusta filtros y personaliza el navegador. Trece capturas reales del juego para explorar a tamaño completo.",
+  "gallery_link": "Explorar toda la galería",
+  "insights_h1": [
+    "Una vista clara.",
+    "De tu próximo mundo."
+  ],
+  "insights_lead": "Trece capturas reales del mod compilado en Horizon. Desde la primera búsqueda hasta tus perfiles de filtros, descubre cómo funciona Server Atlas.",
+  "capture_note": "Capturas del juego · Vista a tamaño completo",
+  "gallery_filters": [
+    "Todas las capturas",
+    "Descubrir",
+    "Gestionar",
+    "Personalizar"
+  ],
+  "capture_context_title": [
+    "El producto real.",
+    "Con datos de ejemplo."
+  ],
+  "capture_context": [
+    "Las imágenes muestran el mod nativo 2.1.0 compilado en Horizon para Minecraft Java 26.3. Las listas personales usan perfiles temporales con servidores locales de prueba, notas y etiquetas. No aparecen mundos ni listas privadas de jugadores.",
+    "La imagen del directorio procede de una prueba real en línea. Todas las capturas se realizaron el 3 de noviembre de 2026. Los estados y las cifras de jugadores reflejan ese momento; las imágenes no están editadas. Las capturas muestran la interfaz del juego en alemán. Cambiar el idioma de la web no traduce las imágenes."
+  ],
+  "directory_eyebrow": "Tu próximo servidor te espera",
+  "directory_h1": [
+    "Tu modo de juego.",
+    "Tu próxima comunidad."
+  ],
+  "directory_intro": "Busca entre 2.835 direcciones públicas de servidores Java. Explora Survival, Skyblock, PvP y minijuegos y copia la dirección que te interese.",
+  "directory_home_intro": "Prueba la búsqueda aquí mismo. El mod comprueba el estado actual de los servidores dentro del juego.",
+  "directory_note": "Catálogo público de direcciones del 3 de noviembre de 2026. Las direcciones, la disponibilidad y las versiones compatibles pueden cambiar.",
+  "catalog_edition": "Java Edition · 2.835 direcciones",
+  "preview": "Vista previa web",
+  "search_label": "Buscar servidores de Minecraft",
+  "search_placeholder": "Busca un nombre, dirección o modo de juego…",
+  "filter_labels": [
+    "Todos",
+    "Survival",
+    "Skyblock",
+    "PvP",
+    "Minijuegos"
+  ],
+  "sort_label": "Ordenar servidores",
+  "sort_options": [
+    "Orden del catálogo",
+    "Nombre: A a Z"
+  ],
+  "all_servers": "Ver todos los servidores",
+  "in_game": "Descubrir en el juego",
+  "sources_link": "Ver las fuentes",
+  "directory_details": [
+    [
+      "Encuentra servidores Survival",
+      "Construye en grupo, reúne recursos o explora un mundo nuevo. El filtro Survival incluye las etiquetas SMP y Vanilla. Comprueba la versión y las reglas antes de entrar."
+    ],
+    [
+      "Explora Skyblock y PvP",
+      "Empieza en una isla o busca tu próximo desafío. Usa los filtros Skyblock y PvP; PvP también incluye las etiquetas Factions y Anarchy."
+    ],
+    [
+      "Juega a minijuegos en compañía",
+      "Encuentra Bedwars, Skywars y más con la búsqueda o el filtro Minijuegos. Esta web ofrece direcciones; el mod comprueba jugadores y ping en Horizon."
+    ]
+  ],
+  "platform_eyebrow": "Tres ediciones. Una interfaz familiar.",
+  "platform_h2": [
+    "Horizon, Fabric, Forge.",
+    "Elige tu edición."
+  ],
+  "platform_intro": "Descarga Server Atlas para Horizon, Fabric o Forge: busca servidores de Minecraft Java 26.3 con filtros y favoritos. Gratis y de código abierto.",
+  "platform_text": [
+    "Mod nativo de Rust 2.1.0 para Horizon con código fuente. Requiere compilación nativa en el lanzador.",
+    "Beta Fabric 2.2.0 para Minecraft 26.3. Java 25 y Fabric Loader 0.20.1+. Módulos necesarios de Fabric API incluidos.",
+    "Beta Forge 2.2.0 para Minecraft 26.3. Java 25 y Minecraft Forge 66.1.5+. Mod solo de cliente."
+  ],
+  "available": "Disponible · 2.1.0",
+  "planned": "Previsto",
+  "development": "Estado del desarrollo",
+  "download_details": "Ver descarga",
+  "faq_eyebrow": "Antes de empezar",
+  "faq_title": "Conviene saberlo.",
+  "faq": [
+    [
+      "¿Qué es Server Atlas?",
+      "Un mod gratuito que organiza la lista de servidores de Minecraft Java. Descubre servidores públicos y gestiona favoritos, notas, grupos y direcciones propias en Horizon."
+    ],
+    [
+      "¿Qué plataformas son compatibles?",
+      "La versión 2.1.0 está disponible como .hnmod nativo de Horizon para Minecraft Java 26.3, probado en Windows x64. Los ports para Fabric y Forge están previstos, sin descarga todavía."
+    ],
+    [
+      "¿Tengo que compilar en cada inicio?",
+      "No. Horizon integra los mods nativos en un cliente y reutiliza esa compilación. Cambiar el mod o el conjunto de mods activos requiere otra compilación."
+    ],
+    [
+      "¿La lista de la web está en directo?",
+      "La web muestra un catálogo de direcciones del 3 de noviembre de 2026, sin cifras de jugadores en directo. El mod comprueba los estados dentro del juego. La conexión también depende de la versión, la autenticación y las reglas."
+    ],
+    [
+      "¿Se publican mis servidores?",
+      "No. Tus servidores y notas permanecen en local. Compilar el mod no publica tu lista. Los borradores de comentarios se guardan localmente; el envío automático por correo no está configurado."
+    ]
+  ],
+  "closing_eyebrow": "Tu próxima conexión",
+  "closing_h2": [
+    "Un buen servidor.",
+    "Una nueva aventura."
+  ],
+  "closing_text": "Descubre nuevos mundos. Conserva tus servidores favoritos. Empieza tu próxima aventura con Server Atlas.",
+  "closing_note": "Gratis · Versión 2.1.0 · Fabric y Forge previstos",
+  "download_eyebrow": "Una descarga. Nuevas posibilidades.",
+  "download_h1": [
+    "Tu lista de servidores.",
+    "Una mejora cuidada."
+  ],
+  "download_intro": "Descarga Server Atlas para Horizon, Fabric o Forge: busca servidores de Minecraft Java 26.3 con filtros y favoritos. Gratis y de código abierto.",
+  "release_title": "Server Atlas para Horizon",
+  "release_text": "Paquete nativo en Rust con búsqueda, filtros, favoritos y gestión de servidores propios. Gratuito bajo licencia MIT, con código fuente incluido.",
+  "release_labels": [
+    "Versión",
+    "Minecraft Java",
+    "Archivo",
+    "Probado en"
+  ],
+  "release_size": ".hnmod · 162,5 KB",
+  "release_build": "Activa el mod nativo en Horizon, compílalo una vez e inicia la instancia resultante.",
+  "checksum": "Verificar SHA-256",
+  "install_link": "Guía de instalación",
+  "mail_limit": "Los comentarios se guardan como borradores locales. El envío automático por correo no está configurado en esta versión.",
+  "install_banner_title": "¿Instalado, pero sin compilar?",
+  "install_banner_text": "Iniciar una versión normal de Horizon no integra el mod. La guía te ayuda a elegir la instancia correcta.",
+  "guide_eyebrow": "Horizon · Fabric · Forge",
+  "guide_h1": [
+    "Configúralo una vez.",
+    "Y empieza a jugar."
+  ],
+  "guide_intro": "Descarga Server Atlas para Horizon, Fabric o Forge: busca servidores de Minecraft Java 26.3 con filtros y favoritos. Gratis y de código abierto.",
+  "guide_steps": [
+    [
+      "Descarga el mod",
+      "Descarga server-browser-2.1.0.hnmod. Contiene la implementación nativa en Rust para Horizon; no es un .jar para Fabric o Forge."
+    ],
+    [
+      "Elige la instancia correcta",
+      "Abre la carpeta de juego de esa instancia y coloca el archivo en horizon-native-mods. Guarda cualquier paquete anterior de Server Atlas fuera de esa carpeta."
+    ],
+    [
+      "Activa y compila el mod",
+      "En la página Mods del launcher, activa server_browser 2.1.0. Elige la opción normal de compilar para la revisión probada y revisa los mods. El jugador decide si acepta «I trust these mods: build»."
+    ],
+    [
+      "Inicia la compilación terminada",
+      "Espera a que termine, cierra el cliente antiguo e inicia esa misma instancia. Abre Multijugador. Actualizar el mod requiere otra compilación; los inicios normales reutilizan la existente."
+    ]
+  ],
+  "guide_help": [
+    [
+      "«No native mod is enabled»",
+      "Un archivo instalado puede seguir desactivado. Activa server_browser en la página Mods de la instancia seleccionada."
+    ],
+    [
+      "«Installed, not built into this game»",
+      "El cliente abierto se compiló sin esta versión. Termina la compilación nativa y reinicia la instancia resultante."
+    ],
+    [
+      "Revisión incompatible o E_INVALID_HELPER",
+      "Usa la opción normal de compilar con las revisiones exactas del paquete. La opción de recompilar la última Nightly puede cambiarlas. Otros mods pueden requerir revisiones distintas; prueba este mod por separado."
+    ]
+  ],
+  "native_notice": "Los mods nativos se ejecutan con tus permisos de usuario. La primera compilación descarga herramientas y puede tardar varios minutos. Se necesitan tus propios recursos de Minecraft, que no se distribuyen con el mod.",
+  "project_eyebrow": "Los detalles, con claridad",
+  "project_h1": [
+    "Un proyecto pequeño.",
+    "Una dirección clara."
+  ],
+  "project_intro": "Server Atlas acorta el camino entre buscar un servidor y jugar en compañía. Aquí encontrarás la versión actual, las fuentes y el tratamiento de los datos.",
+  "project_sections": [
+    [
+      "El proyecto",
+      "Proyecto comunitario independiente desarrollado para shuab. El paquete nativo de Horizon 2.1.0 usa licencia MIT, incluye las fuentes Rust y está dirigido a Minecraft Java 26.3. Probado en Windows x64. No requiere un parche separado del host ni un programa complementario."
+    ],
+    [
+      "Versión y desarrollo",
+      "Beta pública: 96 comprobaciones automáticas superadas por cargador. Algunas instalaciones y combinaciones de juego aún no están verificadas. Horizon: 44 Rust-Tests; nativer Build mit festen Quellständen."
+    ],
+    [
+      "Origen de las direcciones",
+      "El catálogo fechado combina 488 direcciones investigadas anteriormente con 2.347 direcciones públicas Java adicionales y únicas de Modrinth: 2.835 en total. La documentación pública de Serverify permitió identificar esa fuente; la integración con la API es independiente."
+    ],
+    [
+      "Descubrimiento en el mod",
+      "minecraftserve.rs y Modrinth tienen cachés independientes de cinco minutos y un límite persistente de una petición pública por fuente y minuto. No se envían búsquedas, servidores personales, notas ni nombres de jugadores a estas APIs. La opción Desactivado se respeta. Las consultas normales de estado contactan directamente con los servidores."
+    ],
+    [
+      "Datos de la web",
+      "Las búsquedas y filtros se ejecutan en tu navegador. Una búsqueda compartida puede aparecer en la URL y en los registros del alojamiento. El código del sitio no incluye analítica, anuncios ni fuentes externas. El portapapeles se usa al pulsar Copiar dirección."
+    ],
+    [
+      "Imágenes y nombres",
+      "Las imágenes del producto son capturas sin editar del mod compilado. Los perfiles de ejemplo contienen servidores personales y notas inventados; la imagen de descubrimiento procede de una prueba real en línea. Los nombres Minecraft, Horizon y de los modloaders pertenecen a sus propietarios. El logotipo de brújula de Server Atlas es una creación generada por IA. Las capturas del producto proceden del juego."
+    ]
+  ],
+  "legal": "Proyecto comunitario independiente para Minecraft Java. Sin afiliación ni respaldo de Mojang, Microsoft o los proyectos de modloaders de Minecraft.",
+  "footer_note": "Diseñado con cuidado. Para nuevas aventuras.",
+  "language": "Idioma",
+  "more_links": "Más páginas",
+  "back_home": "Volver al inicio",
+  "not_found": "Esta página aún está por descubrir.",
+  "not_found_text": "Esta página no existe. Tu próximo servidor te espera en el inicio.",
+  "lightbox_close": "Cerrar imagen",
+  "lightbox_previous": "Imagen anterior",
+  "lightbox_next": "Imagen siguiente",
+  "lightbox_original": "Abrir imagen original",
+  "lightbox_title": "Server Atlas · Capturado en Horizon",
+  "client": {
+    "copied": "Dirección copiada. ¡Disfruta de la partida!",
+    "copy_fallback": "Selecciona la dirección y cópiala manualmente.",
+    "copy_label": "Copiar dirección de {name}",
+    "copy_title": "Copiar dirección del servidor",
+    "count_one": "{count} dirección de servidor",
+    "count_many": "{count} direcciones de servidores",
+    "load_more": "Mostrar más servidores ({count})",
+    "empty_title": "No hay servidores que coincidan.",
+    "empty_text": "Prueba otro nombre o elimina un filtro de modo de juego.",
+    "catalog_error": "No se pudo cargar el catálogo completo. La vista previa sigue disponible. Inténtalo de nuevo más tarde.",
+    "catalog_preview": "Vista previa del catálogo",
+    "gallery_count_one": "{count} captura",
+    "gallery_count_many": "{count} capturas"
+  },
+  "gallery": [
+    [
+      "Tus mundos, bien organizados.",
+      "Lista de servidores y detalles",
+      "La lista transparente en Horizon, con búsqueda, favoritos y detalles del servidor seleccionado."
+    ],
+    [
+      "Descubre sin salir del juego.",
+      "Directorio público",
+      "Captura real del directorio combinado de minecraftserve.rs y Modrinth. Los estados reflejan el momento de la captura."
+    ],
+    [
+      "Una palabra. Los servidores adecuados.",
+      "Búsqueda por etiquetas",
+      "Buscar survival limita la lista de ejemplo. También puedes buscar nombres, direcciones, MOTD y notas personales."
+    ],
+    [
+      "Tus favoritos, juntos.",
+      "Favoritos",
+      "Una pestaña reúne los servidores marcados con estrella. Los favoritos se guardan en el perfil local."
+    ],
+    [
+      "Solo lo que encaja ahora.",
+      "Estado y versión",
+      "Combina disponibilidad, versiones compatibles, plazas libres y otros criterios en la interfaz real."
+    ],
+    [
+      "Tus límites. Tu selección.",
+      "Jugadores y ping",
+      "Define el mínimo de jugadores o el ping máximo con los campos reales del filtro."
+    ],
+    [
+      "Más cerca de tu comunidad.",
+      "Etiquetas, idioma y región",
+      "Las etiquetas, idioma, región y grupo ayudan a organizar y filtrar tu lista."
+    ],
+    [
+      "Más que una dirección.",
+      "Editar servidor",
+      "Gestiona nombre, dirección, etiquetas y notas en un lugar. Los datos mostrados son ejemplos."
+    ],
+    [
+      "Un lugar para cada detalle.",
+      "Grupos y metadatos",
+      "Añade grupo, idioma y región al servidor. Los datos personales permanecen en local."
+    ],
+    [
+      "Un orden con sentido.",
+      "Ordenación",
+      "Ordena por nombre, ping o jugadores, o conserva tu propio orden."
+    ],
+    [
+      "Guarda tu selección para después.",
+      "Perfiles de filtros",
+      "Los perfiles guardados reutilizan los ajustes en otras partidas. Aquí se prepara uno nuevo."
+    ],
+    [
+      "A tu manera.",
+      "Ajustes",
+      "Controla la apariencia, las actualizaciones, las peticiones de estado y el directorio en línea."
+    ],
+    [
+      "Una idea para la próxima versión.",
+      "Propuestas locales",
+      "Guarda una propuesta de servidor como borrador local. El envío automático por correo no está configurado."
+    ]
+  ],
+  "beta": "Beta pública · 2.2.0",
+  "download_any": "Descargar",
+  "java_notice": "Coloca solo el JAR de tu cargador en la carpeta mods de esa instancia y abre Multijugador. Fabric y Forge no necesitan compilar Horizon.",
+  "beta_note": "Beta pública: 96 comprobaciones automáticas superadas por cargador. Algunas instalaciones y combinaciones de juego aún no están verificadas.",
+  "java_guide_title": "Instalar Fabric y Forge",
+  "java_guide_intro": "Minecraft 26.3 · Java 25. Usa una instancia distinta para cada cargador.",
+  "java_steps": [
+    "Instala Fabric Loader 0.20.1+ o Minecraft Forge 66.1.5+ para Minecraft 26.3.",
+    "Coloca el JAR de Server Atlas correspondiente en la carpeta mods de esa instancia y elimina las versiones anteriores.",
+    "Inicia Minecraft y abre Multijugador. El navegador aparece automáticamente; Clásico abre la pantalla habitual."
+  ]
 }

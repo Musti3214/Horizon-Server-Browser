@@ -1,4 +1,7 @@
-# Minecraft Server Browser
+# Server Atlas
+
+Fabric und Forge sind als öffentliche Beta 2.2.0 für Minecraft 26.3 / Java 25 verfügbar. Jeweils die passende JAR in den mods-Ordner legen: [Fabric](downloads/server-browser-fabric-2.2.0+mc26.3.jar) · [Forge](downloads/server-browser-forge-2.2.0+mc26.3.jar). Fabric Loader ab 0.20.1 bzw. Forge ab 66.1.5. Die Horizon-Version 2.1.0 bleibt separat verfügbar. [Anleitung und Prüfgrenzen](java/README.md).
+
 
 [Projekt auf Ko-fi unterstützen](https://ko-fi.com/foryou41) ·
 [Deutsche Website](https://musti3214.github.io/Horizon-Server-Browser/de/) ·

@@ -1,1 +1,3 @@
 bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58  server-browser-2.1.0.hnmod
+e052510b60b6013e1583bf87b6a383290e314f3ccd89f30b7ba7da110937261a  server-browser-fabric-2.2.0+mc26.3.jar
+465c51a14fa6da206ba6a8275fcf6681f943b706e35b9a3c19c10b2e0e00d942  server-browser-forge-2.2.0+mc26.3.jar

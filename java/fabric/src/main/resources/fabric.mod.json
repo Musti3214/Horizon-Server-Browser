@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "server_browser",
+  "version": "${version}",
+  "name": "Server Atlas",
+  "description": "A familiar Minecraft server browser with public discovery, filters, favorites and local notes.",
+  "authors": [
+    "shuab"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "contact": {
+    "homepage": "https://musti3214.github.io/Horizon-Server-Browser/",
+    "sources": "https://github.com/Musti3214/Horizon-Server-Browser",
+    "issues": "https://github.com/Musti3214/Horizon-Server-Browser/issues"
+  },
+  "mixins": [
+    "server-browser.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.3",
+    "java": ">=25"
+  },
+  "icon": "assets/server_browser/icon.png"
+}

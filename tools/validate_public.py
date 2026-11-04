@@ -12,6 +12,18 @@ assert hashlib.sha256(package.read_bytes()).hexdigest()==EXPECTED
 assert (ROOT/'downloads/server-browser-2.1.0.sha256').read_text().split()[0]==EXPECTED
 config=json.loads((ROOT/'mod/feedback-public.json').read_text(encoding='utf8'))
 assert config=={'provider':'staticforms','form_public_key':''},'Public export must not contain a configured mail key'
+java_manifest=json.loads((ROOT/'downloads/java-manifest.json').read_text(encoding='utf8'))
+allowed_jars={'java/gradle/wrapper/gradle-wrapper.jar'}
+for release in java_manifest['files']:
+    name=release['name']
+    assert name in ('server-browser-fabric-2.2.0+mc26.3.jar','server-browser-forge-2.2.0+mc26.3.jar')
+    assert hashlib.sha256((ROOT/'downloads'/name).read_bytes()).hexdigest()==release['sha256']
+    allowed_jars.update({'downloads/'+name,'website/dist/downloads/'+name})
+    with zipfile.ZipFile(ROOT/'downloads'/name) as java:
+        assert 'pack.mcmeta' in java.namelist()
+        assert all(not n.endswith('.class') or n.startswith('io/github/musti3214/serverbrowser/') for n in java.namelist())
+        assert all(not n.startswith(('net/minecraft/','com/mojang/')) for n in java.namelist())
+        if release['loader']=='fabric':assert json.loads(java.read('fabric.mod.json'))['name']=='Server Atlas'
 with zipfile.ZipFile(package) as archive:
     names=archive.namelist()
     assert len(names)==len(set(names))==29
@@ -36,9 +48,10 @@ for file in ROOT.rglob('*'):
     if not file.is_file():continue
     count+=1
     assert not any(part in ('.aws','.codex','.sites-runtime') for part in relative.parts),relative
-    assert file.suffix.lower() not in ('.exe','.dll','.jar','.mrpack','.pem','.key','.pfx','.env'),relative
+    assert file.suffix.lower() not in ('.exe','.dll','.class','.mrpack','.pem','.key','.pfx','.env'),relative
+    if file.suffix.lower()=='.jar':assert relative.as_posix() in allowed_jars,relative
     assert file.name not in ('.env','credentials.json','accounts.json','servers.dat'),relative
-    if file.suffix in ('.md','.py','.json','.toml','.rs','.js','.html','.yml','.yaml','.txt'):
+    if file.suffix in ('.md','.py','.json','.toml','.rs','.java','.js','.html','.yml','.yaml','.txt'):
         data=file.read_text(encoding='utf8')
         assert not re.search(r'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----',data),relative
         assert not re.search(r'[A-Za-z]:[\\/]Users[\\/]',data),relative
