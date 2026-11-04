@@ -1,0 +1,42 @@
+id = "server_browser"
+kind = "native-mod"
+name = "Server Atlas"
+summary = "Discover and organize Minecraft servers in-game with filters, favorites and local notes."
+description = """
+Server Atlas is a native Rust server browser for Horizon and Minecraft Java 26.3, with a familiar Minecraft interface and translucent server rows.
+
+## Features
+- My Servers, Discover, Favorites, Recent and LAN views.
+- Search names, addresses, MOTDs, tags, groups and notes; combine status, version, player-count, ping, language and region filters.
+- Public discovery from Modrinth and minecraftserve.rs, with 2,835 bundled public addresses.
+- Real server status, colored MOTDs, icons, local favorites, notes, groups and saved filter profiles.
+- Custom ordering, JSON/NBT import/export and preservation of unknown vanilla server-list fields.
+- English and German, with Minecraft-style buttons and a Classic view.
+
+## Installation and compatibility
+Install the native mod into a Horizon instance, build that instance through the launcher, and open Multiplayer. No separately installed host patch or companion app is needed. Native mods run with the player's account permissions.
+
+The released 2.1.0 package still displays its earlier Server Browser name and uses the server_browser ID. It pins Horizon 142388e1c136e622652ec7505af15d8ad195e041 and horizon-mixins a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab. Its native build and 44 Rust checks passed on those revisions. Compatibility with a current Nightly is not established; do not combine it with mods requiring another revision without checking the build.
+
+## Network and local data
+Online discovery is enabled by default and can be switched off. Directory requests read public listing pages; personal server addresses, notes and search text are not sent to those providers. Requests are independently rate-limited and cached. Visible servers receive ordinary Minecraft status requests directly. Saved servers, favorites and notes remain local.
+
+Feedback and server suggestions currently save local drafts only. Automatic email delivery is not configured. The mod uses Horizon's existing connection/authentication flow.
+
+Actual in-game screenshots and installation guide: https://musti3214.github.io/Horizon-Server-Browser/
+Validation: https://github.com/Musti3214/Horizon-Server-Browser/blob/main/docs/VALIDATION.md
+Separate Fabric and Forge public betas are available from the project repository.
+"""
+authors = ["shuab"]
+owners = ["Musti3214"]
+license = "MIT"
+source = "https://github.com/Musti3214/Horizon-Server-Browser/tree/v2.1.0/mod"
+icon = "icons/server_browser.png"
+
+[[versions]]
+version = "2.1.0"
+published = "2026-11-04"
+game = "26.3"
+file = "server_browser-2.1.0.hnmod"
+sha256 = "bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58"
+changelog = "First registry review proposal: native server discovery, filters, favorites and notes, Modrinth integration and 2,835 bundled public addresses. Pinned Horizon build; current Nightly support is not claimed."
