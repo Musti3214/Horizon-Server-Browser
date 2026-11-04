@@ -3,12 +3,12 @@ use crate::{clipboard::{Clipboard, EditShortcut}, hud::{HudAtlas, HudBatch}, tit
 use std::{cell::{Cell, RefCell}, path::Path, time::Instant};
 use winit::{event::{ElementState, KeyEvent, WindowEvent}, keyboard::{KeyCode, PhysicalKey}};
 
-const MARKER: &str = "\0server_browser:2.1.0";
+const MARKER: &str = "\0server_browser:2.2.0";
 struct State { browser: Browser, caret: Caret, focused_at: Instant, press: Option<((f32,f32),(f32,f32),bool)>, mouse_down: bool }
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
     static BYPASS: Cell<bool> = const { Cell::new(false) };
-    static CONNECT: RefCell<Option<String>> = const { RefCell::new(None) };
+    static CONNECT: RefCell<Option<(String,bool)>> = const { RefCell::new(None) };
     static CLASSIC: Cell<bool> = const { Cell::new(false) };
     static ON: Cell<bool> = const { Cell::new(false) };
     static HELD: Cell<(bool,bool)> = const { Cell::new((false,false)) };
@@ -43,7 +43,7 @@ pub fn open(saves: &Path, force: bool) -> Option<crate::multiplayer::Screen> {
                 if let Err(error)=browser.persist() {log::warn!("Server Browser settings: {error}");}
             }
             STATE.set(Some(State {browser,caret:Caret::default(),focused_at:Instant::now(),press:None,mouse_down:false}));
-            log::info!("[mod server_browser] Native Server Browser 2.1.0 opened");
+            log::info!("[mod server_browser] Server Atlas 2.2.0 opened");
             Some(marker())
         }
         Err(e) => { log::warn!("Server Browser: {e}"); None }
@@ -62,7 +62,7 @@ fn classic(saves: &Path) -> crate::multiplayer::Screen {
 }
 fn apply(title: &mut Title, outcome: Outcome) -> Action {
     match outcome {
-        Outcome::Connect(address) => { title.last_server=address.clone(); Action::Connect { address } }
+        Outcome::Connect {address,lan} => { title.last_server=address.clone(); Action::Connect { address, lan } }
         Outcome::Back => { close(); title.mode=Mode::Main; Action::None }
         Outcome::Classic => { close(); CLASSIC.set(true);title.mode=Mode::Multiplayer(classic(&title.saves)); Action::None }
         Outcome::None => Action::None,
@@ -149,10 +149,10 @@ fn key_action(title:&mut Title,key:KeyCode,ctrl:bool,shift:bool)->Option<Action>
     let outcome=with(|s| s.browser.key(key,ctrl,shift)).flatten()?;
     Some(apply(title,outcome))
 }
-pub fn queue_action(action:Action) { if let Action::Connect{address}=action { CONNECT.set(Some(address)); } }
+pub fn queue_action(action:Action) { if let Action::Connect{address,lan}=action { CONNECT.set(Some((address,lan))); } }
 pub fn key(title:&mut Title,key:KeyCode,ctrl:bool,shift:bool) { if let Some(action)=key_action(title,key,ctrl,shift) {queue_action(action);} }
 pub fn confirm(title:&mut Title) { key(title,KeyCode::Enter,false,false); }
-pub fn take_connect()->Option<String> { CONNECT.take() }
+pub fn take_connect()->Option<(String,bool)> { CONNECT.take() }
 pub fn event(title:&mut Title,event:&WindowEvent,ctrl:bool,shift:bool,alt:bool,board:&mut dyn Clipboard)->Option<Action> {
     if let WindowEvent::ModifiersChanged(modifiers)=event {with(|s| s.browser.set_modifiers(modifiers.state().control_key(),modifiers.state().shift_key()));}
     if let WindowEvent::KeyboardInput{event,..}=event { key_event(title,event,ctrl,shift,alt,board) } else {None}
@@ -204,11 +204,13 @@ mod tests {
         // Closing a dialog must cancel an early-startup connection even while
         // the browser itself remains open for the next resource-loading frame.
         with(|s| s.browser.modal=super::super::Modal::Direct(String::new()));
-        queue_action(Action::Connect { address:"127.0.0.1:25565".into() });
+        queue_action(Action::Connect { address:"127.0.0.1:25565".into(), lan:true });
+        assert_eq!(take_connect(),Some(("127.0.0.1:25565".into(),true)));
+        queue_action(Action::Connect { address:"127.0.0.1:25565".into(), lan:true });
         escape(&mut title);
         assert!(active(&title));
         assert!(take_connect().is_none());
-        queue_action(Action::Connect { address:"127.0.0.1:25565".into() });
+        queue_action(Action::Connect { address:"127.0.0.1:25565".into(), lan:false });
         close();
         assert!(take_connect().is_none());
         assert!(!active(&title));

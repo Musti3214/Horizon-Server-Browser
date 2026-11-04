@@ -33,7 +33,7 @@ def main():
     f.seed=seed
     de=json.loads((ROOT/'src/lang/de_de.json').read_text(encoding='utf8'))
     label=lambda key:de['horizon.browser.'+key]
-    report={'result':'FAIL','version':'2.1.0','screenshots':[],'personal_data_used':False}
+    report={'result':'FAIL','version':'2.2.0','screenshots':[],'personal_data_used':False}
     with f.StatusServer(('127.0.0.1',0),f.StatusHandler) as status:
         worker=threading.Thread(target=status.serve_forever,daemon=True);worker.start()
         d=f.Driver(args,args.out,1920,1080,status.server_address[1]);f.seed=original

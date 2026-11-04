@@ -289,7 +289,7 @@ fn fetch(url: &str) -> core::Result<Vec<u8>> {
         .get(url)
         .set(
             "User-Agent",
-            "HorizonServerBrowser/2.1.0 (+https://server-browser-mod.indiebini.chatgpt.site)",
+            "ServerAtlas/2.2.0 (+https://musti3214.github.io/Horizon-Server-Browser/)",
         )
         .call()
     {

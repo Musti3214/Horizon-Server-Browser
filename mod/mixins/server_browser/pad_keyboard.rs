@@ -27,8 +27,9 @@ fn hook(
                 }
             }
         }
-        if let horizon_client::title::Action::Connect { address } = action
-            && let Err(error) = game.connect_server(&address, &game.options.player_name())
+        if let horizon_client::title::Action::Connect { address, lan } = action
+            && let Err(error) =
+                game.connect_server_with_options(&address, &game.options.player_name(), None, lan)
         {
             log::warn!("Server Browser: {error}");
         }

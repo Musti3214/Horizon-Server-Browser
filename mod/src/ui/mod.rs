@@ -295,7 +295,7 @@ impl Browser {
         };
         let address = server.address.clone();
         self.record_recent(server);
-        Outcome::Connect(address)
+        Outcome::Connect { address, lan: self.state.view.tab == Tab::Lan }
     }
     fn record_recent(&mut self, mut server: Server) {
         let now = core::unix_seconds();
@@ -689,7 +689,7 @@ impl Browser {
                 self.last_row_click = Some((now, address.clone()));
                 self.select(address.clone());
                 if is_double_click || (was_selected && on_icon) {
-                    return Outcome::Connect(address);
+                    return Outcome::Connect { address, lan: self.state.view.tab == Tab::Lan };
                 }
                 if cursor.0 < left + 10.0 {
                     self.drag_from = Some(address);

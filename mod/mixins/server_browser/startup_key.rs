@@ -1,7 +1,7 @@
 fn hook(
     menu: &mut crate::game::startup_menu::StartupMenu,
     event: &winit::event::KeyEvent,
-) -> std::ops::ControlFlow<()> {
+) -> std::ops::ControlFlow<Action> {
     let action = if let Some(title) = &mut menu.title {
         horizon_client::server_browser::native::key_event(
             title,
@@ -15,8 +15,7 @@ fn hook(
         None
     };
     if let Some(action) = action {
-        horizon_client::server_browser::native::queue_action(action);
-        return std::ops::ControlFlow::Break(());
+        return std::ops::ControlFlow::Break(action);
     }
     std::ops::ControlFlow::Continue(())
 }

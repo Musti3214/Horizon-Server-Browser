@@ -1,10 +1,15 @@
 fn hook(
-    app: &mut crate::game::App,
+    game: &mut crate::game::Game<'_>,
     event: &winit::event::WindowEvent,
+    window_id: winit::window::WindowId,
 ) -> std::ops::ControlFlow<()> {
-    let crate::game::App::Ready(game) = app else {
+    if game
+        .window
+        .as_ref()
+        .is_none_or(|window| window.id() != window_id)
+    {
         return std::ops::ControlFlow::Continue(());
-    };
+    }
     if game.screen != crate::game::Screen::Playing {
         return std::ops::ControlFlow::Continue(());
     }
@@ -21,8 +26,9 @@ fn hook(
         None
     };
     if let Some(action) = action {
-        if let horizon_client::title::Action::Connect { address } = action
-            && let Err(error) = game.connect_server(&address, &game.options.player_name())
+        if let horizon_client::title::Action::Connect { address, lan } = action
+            && let Err(error) =
+                game.connect_server_with_options(&address, &game.options.player_name(), None, lan)
         {
             log::warn!("Server Browser: {error}");
         }

@@ -51,9 +51,10 @@ def publish(tag, title, body, files, beta):
 
 metadata = json.loads((ROOT / 'website/releases.json').read_text())
 native = metadata['horizon']
-publish('v2.1.0', 'Server Atlas — Horizon 2.1.0',
-    'Native Rust edition, formerly Horizon Server Browser. Minecraft Java 26.3. '
+publish('v2.2.0', 'Server Atlas — Horizon 2.2.0',
+    'Native Rust edition, updated and tested on Horizon Nightly 2026-11-04 · 6475f62, for Minecraft Java 26.3. '
     'Install the .hnmod using the Horizon launcher and build the matching instance. '
+    'Uses the official native mod mechanism without a separate host patch. Updated for the client library split, scroll and keyboard actions, and DNS resolver API. '
     'Source and exact tested revision pins are in mod/. Native code runs with your user permissions. '
     'Automatic email delivery is unconfigured.\n\n'
     'Website: https://musti3214.github.io/Horizon-Server-Browser/\n'

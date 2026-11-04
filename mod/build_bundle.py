@@ -13,8 +13,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "src"
 OUT = ROOT / "mixins/server_browser"
-REV = "142388e1c136e622652ec7505af15d8ad195e041"
+REV = "6475f62f3c834b7489e1816bf47f47ea5eb2b879"
 MIXINS = "a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab"
+VERSION = "2.2.0"
 
 
 def items(text):
@@ -111,23 +112,23 @@ def assemble():
 '''
     catalog = items(read("mods/community/server-browser/src/catalog.rs"))
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
-    notice = "// Modern Server Browser — native mod by shuab. SPDX-License-Identifier: MIT\n"
+    notice = "// Server Atlas — native mod by shuab. SPDX-License-Identifier: MIT\n"
     notice += "\n".join("// " + line for line in license_text.splitlines()) + "\n"
     payload = notice + f"pub mod core {{\n{core}\n}}\n" + source + "\n" + translations + "\n" + icons
     payload += f"\nmod catalog {{\n{catalog}\n}}\n"
-    payload += "\n#[derive(Debug)]\npub enum Outcome { None, Back, Connect(String), Classic }\n"
+    payload += "\n#[derive(Debug)]\npub enum Outcome { None, Back, Connect { address: String, lan: bool }, Classic }\n"
     payload += "\npub mod native {\n" + (ROOT / "native.rs").read_text(encoding="utf-8") + "\n}\n"
     write("runtime.rs", payload)
 
     manifest = f'''[mod]
 id = "server_browser"
-version = "2.1.0"
+version = "{VERSION}"
 priority = 100
 [compatibility]
 horizon_revision = "{REV}"
 [[module]]
 id = "runtime"
-file = "crates/horizon-client/src/lib.rs"
+file = "crates/horizon-client/src/client_lib.rs"
 name = "server_browser"
 source = "runtime.rs"
 visibility = "pub"
@@ -138,7 +139,7 @@ name = "server_browser_resolver"
 source = "resolver.rs"
 visibility = "pub"
 '''
-    write("resolver.rs", "pub fn addresses(host: &str, port: u16) -> crate::Result<Vec<std::net::SocketAddr>> { crate::resolver::resolve(host, port).map(super::ipv4_first) }")
+    write("resolver.rs", "pub fn addresses(host: &str, port: u16) -> crate::Result<Vec<std::net::SocketAddr>> { crate::resolver::resolve(host, port).map(|resolved| super::ipv4_first(resolved.addresses)) }")
 
     def hook(name, target, params, body, result=None, kind="HEAD"):
         nonlocal manifest
@@ -150,15 +151,15 @@ visibility = "pub"
             manifest += "cancellable = true\n"
         manifest += "bindings = [\n" + "\n".join(f'  {{ name = {json.dumps(n)}, ty = {json.dumps(t)}, value = {json.dumps(v)} }},' for n, t, v in params) + "\n]\n"
 
-    title = "horizon_client::title::Title::"
+    title = "horizon_client_lib::title::Title::"
     base = [("title", "&mut crate::title::Title", "&mut *self")]
     shared = [("title", "&crate::title::Title", "self")]
-    def title_hook(name, params, result, call):
+    def title_hook(name, params, result, call, target_name=None):
         action = ((call + ";\n") if call != "()" else "") + "return std::ops::ControlFlow::Break(());" if result == "()" else f"return std::ops::ControlFlow::Break({call});"
         body = f"if crate::server_browser::native::active(title) {{\n{action}\n}}\nstd::ops::ControlFlow::Continue(())"
-        hook("title_" + name, title + name, params, body, result)
+        hook("title_" + name, title + (target_name or name), params, body, result)
 
-    title_hook("draw", shared + [("atlas", "&crate::hud::HudAtlas", "atlas"),("batch", "&mut crate::hud::HudBatch", "&mut *batch"),("cursor", "(f32, f32)", "cursor")], "()", "crate::server_browser::native::draw(atlas,batch,cursor)")
+    title_hook("draw", shared + [("atlas", "&crate::hud::HudAtlas", "atlas"),("batch", "&mut crate::hud::HudBatch", "&mut *batch"),("cursor", "(f32, f32)", "cursor")], "()", "crate::server_browser::native::draw(atlas,batch,cursor)", target_name="draw_with_items")
     hook("title_click", title + "click", base + [("x","f32","x"),("y","f32","y"),("size","(f32, f32)","size")], '''if crate::server_browser::native::active(title) {
         return std::ops::ControlFlow::Break(crate::server_browser::native::click(title,x,y,size));
     }
@@ -168,7 +169,7 @@ visibility = "pub"
     }
     if crate::server_browser::native::classic_click(title,(x,y),size) {return std::ops::ControlFlow::Break((crate::title::Action::None,true));}
     std::ops::ControlFlow::Continue(())''', "(Action, bool)")
-    hook("classic_switch", "horizon_client::multiplayer::Screen::draw_tooltip", [("screen","&crate::multiplayer::Screen","self"),("atlas","&crate::hud::HudAtlas","atlas"),("batch","&mut crate::hud::HudBatch","&mut *batch"),("cursor","(f32, f32)","cursor")], "crate::server_browser::native::draw_classic_switch(screen,atlas,batch,cursor);")
+    hook("classic_switch", "horizon_client_lib::multiplayer::Screen::draw_tooltip", [("screen","&crate::multiplayer::Screen","self"),("atlas","&crate::hud::HudAtlas","atlas"),("batch","&mut crate::hud::HudBatch","&mut *batch"),("cursor","(f32, f32)","cursor")], "crate::server_browser::native::draw_classic_switch(screen,atlas,batch,cursor);")
     hook("title_focused_field", title+"focused_field",base,'''if crate::server_browser::native::active(title) || title.rules.get_mut().is_some() { return None; }
     match &mut title.mode {
         crate::title::Mode::Multiplayer(screen) => screen.focused_text(),
@@ -183,7 +184,7 @@ visibility = "pub"
     title_hook("release_field", base, "()", "crate::server_browser::native::release_field()")
     title_hook("drag", base + [("cursor","(f32, f32)","cursor"),("size","(f32, f32)","size")], "()", "crate::server_browser::native::drag(cursor,size)")
     title_hook("release", base, "()", "crate::server_browser::native::release()")
-    title_hook("scroll_worlds", base + [("delta","f32","delta"),("cursor","(f32, f32)","cursor"),("size","(f32, f32)","size")], "()", "crate::server_browser::native::wheel(delta,cursor,size)")
+    title_hook("scroll_worlds", base + [("delta","f32","delta"),("cursor","(f32, f32)","cursor"),("size","(f32, f32)","size")], "bool", "{ crate::server_browser::native::wheel(delta,cursor,size); false }")
     title_hook("escape", base, "()", "crate::server_browser::native::escape(title)")
     title_hook("refresh_servers", base, "()", "crate::server_browser::native::refresh()")
     title_hook("tab", base, "()", "crate::server_browser::native::key(title,winit::keyboard::KeyCode::Tab,false,false)")
@@ -192,26 +193,26 @@ visibility = "pub"
     game = [("game", "&mut crate::game::Game<'_>", "&mut *self")]
     hook("mods", "horizon_client::game::native_hooks::Game<'_>::native_mods", game + [("mods", "&mut Vec<crate::game::native_hooks::NativeMod>", "&mut *mods")], '''let _ = game;
     mods.push(crate::game::native_hooks::NativeMod {
-        id: "server_browser".into(), title: "Modern Server Browser 2.1.0".into(),
-        description: "Native server browser: search, filters, favorites, LAN and opt-in discovery.".into(), keys: Vec::new(),
+        id: "server_browser".into(), title: "Server Atlas 2.2.0".into(),
+        description: "Native server browser: search, filters, favorites, LAN and public discovery.".into(), keys: Vec::new(),
     });''')
     hook("frame", "horizon_client::game::native_hooks::Game<'_>::native_frame", game, '''if !game.native_window() { return; }
     if let Some(title) = &mut game.title {
         let on=!game.settings.mods.disabled.contains("server_browser");
         horizon_client::server_browser::native::sync(title, on);
     } else { horizon_client::server_browser::native::close(); }
-    if let Some(address) = horizon_client::server_browser::native::take_connect()
-        && let Err(error) = game.connect_server(&address, &game.options.player_name()) {
+    if let Some((address,lan)) = horizon_client::server_browser::native::take_connect()
+        && let Err(error) = game.connect_server_with_options(&address, &game.options.player_name(),None,lan) {
         log::warn!("Server Browser: {error}");
     }''')
-    hook("key_event", "horizon_client::game::<App as ApplicationHandler>::window_event", [("app","&mut crate::game::App","&mut *self"),("event","&winit::event::WindowEvent","&event")], '''let crate::game::App::Ready(game) = app else { return std::ops::ControlFlow::Continue(()); };
+    hook("key_event", "horizon_client::game::<Game<'_> as ApplicationHandler>::window_event", game + [("event","&winit::event::WindowEvent","&event"),("window_id","winit::window::WindowId","id")], '''if game.window.as_ref().is_none_or(|window| window.id()!=window_id) { return std::ops::ControlFlow::Continue(()); }
     if game.screen!=crate::game::Screen::Playing {return std::ops::ControlFlow::Continue(());}
     let action = if let Some(title) = &mut game.title {
         horizon_client::server_browser::native::event(title, event, game.modifiers.control_key(), game.modifiers.shift_key(), game.modifiers.alt_key(), &mut game.clipboard)
     } else { None };
     if let Some(action) = action {
-        if let horizon_client::title::Action::Connect { address } = action
-            && let Err(error) = game.connect_server(&address, &game.options.player_name()) {
+        if let horizon_client::title::Action::Connect { address,lan } = action
+            && let Err(error) = game.connect_server_with_options(&address, &game.options.player_name(),None,lan) {
             log::warn!("Server Browser: {error}");
         }
         return std::ops::ControlFlow::Break(());
@@ -221,10 +222,9 @@ visibility = "pub"
         horizon_client::server_browser::native::key_event(title,event,menu.modifiers.control_key(),menu.modifiers.shift_key(),menu.modifiers.alt_key(),&mut menu.clipboard)
     } else { None };
     if let Some(action) = action {
-        horizon_client::server_browser::native::queue_action(action);
-        return std::ops::ControlFlow::Break(());
+        return std::ops::ControlFlow::Break(action);
     }
-    std::ops::ControlFlow::Continue(())''', "()")
+    std::ops::ControlFlow::Continue(())''', "Action")
     hook("control", "horizon_client::game::control::Game<'_>::control_command", game + [("line","&str","line")], '''if game.title.is_some() && game.screen==crate::game::Screen::Playing {
         let words: Vec<_> = line.split_whitespace().collect();
         if words.first()==Some(&"key") && let Some(code)=words.get(1).and_then(|s|key_code(s)) {
@@ -232,8 +232,8 @@ visibility = "pub"
                     let Some(title)=game.title.as_mut() else {return std::ops::ControlFlow::Break(Err("title closed".into()));};
                     horizon_client::server_browser::native::control_key(title,code,words.get(2).copied().unwrap_or("tap"),&mut game.clipboard)
                 };
-                if let horizon_client::title::Action::Connect{address}=action
-                    && let Err(error)=game.connect_server(&address,&game.options.player_name()) {
+                if let horizon_client::title::Action::Connect{address,lan}=action
+                    && let Err(error)=game.connect_server_with_options(&address,&game.options.player_name(),None,lan) {
                     return std::ops::ControlFlow::Break(Err(error));
                 }
                 return std::ops::ControlFlow::Break(Ok(Some(serde_json::json!({"ok":true}))));
@@ -258,8 +258,8 @@ visibility = "pub"
                 horizon_client::osk::Output::Close=>{game.pad.menu.osk=None;game.pad.menu.osk_dismissed=true;}
             }
         }
-        if let horizon_client::title::Action::Connect{address}=action
-            && let Err(error)=game.connect_server(&address,&game.options.player_name()) {
+        if let horizon_client::title::Action::Connect{address,lan}=action
+            && let Err(error)=game.connect_server_with_options(&address,&game.options.player_name(),None,lan) {
             log::warn!("Server Browser: {error}");
         }
         return std::ops::ControlFlow::Break(());
@@ -272,9 +272,9 @@ visibility = "pub"
     if not formatter:
         raise SystemExit("rustfmt (Rust 1.99.1) must be on PATH to build a reproducible bundle")
     subprocess.run([formatter,"--edition","2024","--config","newline_style=Unix",*map(str,sorted(OUT.glob("*.rs")))],check=True)
-    native = {"schema":1,"id":"server_browser","version":"2.1.0","game":"26.3","horizon":REV,"mixins":MIXINS}
-    (ROOT / "horizon-native.json").write_text(json.dumps(native,indent=2)+"\n",encoding="utf-8")
-    package = ROOT / "server-browser-2.1.0.hnmod"
+    native = {"schema":1,"id":"server_browser","version":VERSION,"game":"26.3","horizon":REV,"mixins":MIXINS}
+    (ROOT / "horizon-native.json").write_text(json.dumps(native,indent=2)+"\n",encoding="utf-8",newline="\n")
+    package = ROOT / f"server-browser-{VERSION}.hnmod"
     with zipfile.ZipFile(package,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for path in [ROOT / "horizon-native.json", *sorted(OUT.glob("*"))]:
             if path.is_file():
@@ -282,6 +282,10 @@ visibility = "pub"
                 info.compress_type=zipfile.ZIP_DEFLATED
                 info.external_attr=0o100644<<16
                 z.writestr(info,path.read_bytes())
+        info=zipfile.ZipInfo("mixins/server_browser/LICENSE",date_time=(2026,11,1,0,0,0))
+        info.compress_type=zipfile.ZIP_DEFLATED
+        info.external_attr=0o100644<<16
+        z.writestr(info,(ROOT/"LICENSE").read_bytes())
     print(package)
 
 

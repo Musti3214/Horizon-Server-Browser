@@ -3,10 +3,12 @@ fn hook(
     delta: f32,
     cursor: (f32, f32),
     size: (f32, f32),
-) -> std::ops::ControlFlow<()> {
+) -> std::ops::ControlFlow<bool> {
     if crate::server_browser::native::active(title) {
-        crate::server_browser::native::wheel(delta, cursor, size);
-        return std::ops::ControlFlow::Break(());
+        return std::ops::ControlFlow::Break({
+            crate::server_browser::native::wheel(delta, cursor, size);
+            false
+        });
     }
     std::ops::ControlFlow::Continue(())
 }

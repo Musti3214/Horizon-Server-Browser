@@ -9,9 +9,9 @@ HOST=os.environ.get('SITE_ORIGIN','https://musti3214.github.io').rstrip('/')
 CANONICAL=os.environ.get('SITE_CANONICAL_ORIGIN',HOST+BASE).rstrip('/')
 assert urlsplit(CANONICAL).scheme in ('http','https') and urlsplit(CANONICAL).netloc
 assert not BASE or (BASE.startswith('/') and not BASE.startswith('//') and '..' not in BASE and not any(c in BASE for c in '\\?"#'))
-VERSION,DAY='2.2.0','2026-11-04'
+VERSION,DAY='2.2.0-native','2026-11-04'
 RELEASES=json.loads((ROOT/'releases.json').read_text(encoding='utf8'))
-SHA='bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58'
+SHA=RELEASES['horizon']['sha256']
 REPO='https://github.com/Musti3214/Horizon-Server-Browser'
 SUPPORT='https://ko-fi.com/foryou41'
 SUPPORT_TEXT=dict(en='Support this project',de='Projekt unterstützen',fr='Soutenir le projet',es='Apoyar el proyecto')
@@ -19,7 +19,8 @@ L={code:json.loads((ROOT/'locales'/f'{code}.json').read_text(encoding='utf8')) f
 for code,t in L.items():
     assert t.keys()==L['en'].keys() and len(t['gallery'])==13 and len(t['routes'])==6,code
 G=json.loads((ROOT/'gallery.json').read_text(encoding='utf8'))
-S=json.loads((ROOT/'data/servers.json').read_text(encoding='utf8'))['servers']
+CATALOG=json.loads((ROOT/'data/servers.json').read_text(encoding='utf8'))
+S=CATALOG['servers']
 assert len(S)==len({s['address'].lower() for s in S})==2835
 def e(s): return html.escape(str(s),quote=True)
 def br(s): return '<br>'.join(map(e,s))
@@ -52,7 +53,7 @@ def hero(lang,i,key):
 def head(eyebrow,title,intro): return f'<div class="section-head"><div><div class="eyebrow">{e(eyebrow)}</div><h2>{br(title) if isinstance(title,list) else e(title)}</h2></div><p>{e(intro)}</p></div>'
 def photo(lang,i,large=False):
     title,label,desc=L[lang]['gallery'][i]; src=asset('gallery/'+G[i]['file'])
-    return f'<a class="{"hero-photo" if large else "gallery-photo"}" href="{src}" data-gallery data-title="{e(title)}" data-caption="{e(desc)}" aria-label="{e(label)} — {e(L[lang]["enlarge"])}"><img src="{src}" width="1920" height="1080" '+('fetchpriority="high"' if large else 'loading="lazy"')+f' alt="Server Atlas 2.1 · {e(label)} · Horizon"><span class="{"hero-enlarge" if large else "photo-expand"}" aria-hidden="true">{e(L[lang]["enlarge"]) if large else ""} ↗</span></a>'
+    return f'<a class="{"hero-photo" if large else "gallery-photo"}" href="{src}" data-gallery data-title="{e(title)}" data-caption="{e(desc)}" aria-label="{e(label)} — {e(L[lang]["enlarge"])}"><img src="{src}" width="1920" height="1080" '+('fetchpriority="high"' if large else 'loading="lazy"')+f' alt="Server Atlas 2.2 · {e(label)} · Horizon"><span class="{"hero-enlarge" if large else "photo-expand"}" aria-hidden="true">{e(L[lang]["enlarge"]) if large else ""} ↗</span></a>'
 def card(lang,i):
     title,label,desc=L[lang]['gallery'][i]
     return f'<article class="gallery-card" data-category="{G[i]["category"]}">{photo(lang,i)}<div class="gallery-caption"><span class="eyebrow">{i+1:02d} / {e(label)}</span><h2>{e(title)}</h2><p>{e(desc)}</p></div></article>'
@@ -92,15 +93,15 @@ def directory(lang):
     return f'<div class="container">{hero(lang,2,"directory")}{catalog(lang,True)}<div class="directory-description">{details}</div><div class="callout">{e(t["directory_note"])} {link(t["sources_link"],u(lang,5)+"#sources")}</div></div><section class="section">{closing(lang)}</section>'
 def download(lang):
     t=L[lang]; native=RELEASES['horizon']
-    meta=''.join(f'<div><span>{e(a)}</span><strong>{e(b)}</strong></div>' for a,b in zip(t['release_labels'],('2.1.0','26.3',t['release_size'],'Windows x64')))
+    meta=''.join(f'<div><span>{e(a)}</span><strong>{e(b)}</strong></div>' for a,b in zip(t['release_labels'],(RELEASES['horizon']['version'],'26.3',str(round(RELEASES['horizon']['size']/1024))+' KiB','Windows x64')))
     cards=[]
     for i,row in enumerate(RELEASES['java']['files']):
         loader=row['loader'].title();cards.append(f'<article class="release-card"><span class="badge">{e(t["beta"])}</span><h3>{loader} · 2.2.0</h3><p>{e(t["platform_text"][i+1])}</p><p>Minecraft 26.3 · Java 25 · {row["size"]/1024:.0f} KiB</p><div class="actions">{btn(t["download_any"]+" · "+loader,BASE+"/downloads/"+row["name"],"primary","download",True)}</div><p class="small-note">{e(t["beta_note"])}</p></article>')
-    return f'<div class="container">{hero(lang,3,"download")}<div class="download-grid"><section class="release-card"><span class="badge"><span class="dot"></span>{e(t["available"])}</span><h2>Horizon · 2.1.0</h2><p>{e(t["platform_text"][0])}</p><div class="release-meta">{meta}</div><div class="actions">{btn(t["horizon_download"],BASE+"/downloads/"+native["name"],"primary","download",True)}</div><p class="small-note">{e(t["release_build"])}</p><p class="release-notes"><a href="{BASE}/downloads/SHA256SUMS.txt">{e(t["checksum"])}</a> · <a href="{u(lang,4)}">{e(t["install_link"])}</a></p><p class="release-notes">{e(t["mail_limit"])}</p></section><div class="upcoming">{"".join(cards)}</div></div><section class="install-banner"><div><h2>{e(t["java_guide_title"])}</h2><p>{e(t["java_notice"])}</p></div>{btn(t["install_link"],u(lang,4),"secondary")}</section></div>{faq(lang)}'
+    return f'<div class="container">{hero(lang,3,"download")}<div class="download-grid"><section class="release-card"><span class="badge"><span class="dot"></span>{e(t["available"])}</span><h2>Horizon · {e(RELEASES["horizon"]["version"])}</h2><p>{e(t["platform_text"][0])}</p><div class="release-meta">{meta}</div><div class="actions">{btn(t["horizon_download"],BASE+"/downloads/"+native["name"],"primary","download",True)}</div><p class="small-note">{e(t["release_build"])}</p><p class="release-notes"><a href="{BASE}/downloads/SHA256SUMS.txt">{e(t["checksum"])}</a> · <a href="{u(lang,4)}">{e(t["install_link"])}</a></p><p class="release-notes">{e(t["mail_limit"])}</p></section><div class="upcoming">{"".join(cards)}</div></div><section class="install-banner"><div><h2>{e(t["java_guide_title"])}</h2><p>{e(t["java_notice"])}</p></div>{btn(t["install_link"],u(lang,4),"secondary")}</section></div>{faq(lang)}'
 def guide(lang):
     t=L[lang]; steps=''.join(f'<section class="step"><div><h2>{e(a)}</h2><p>{e(b)}</p>'+('<pre>horizon-native-mods</pre>' if i==1 else '')+'</div></section>' for i,(a,b) in enumerate(t['guide_steps'])); helptext=''.join(f'<h2>{e(a)}</h2><p>{e(b)}</p>' for a,b in t['guide_help'])
     java='<section class="prose"><h2>'+e(t['java_guide_title'])+'</h2><p>'+e(t['java_guide_intro'])+'</p><ol>'+''.join('<li>'+e(step)+'</li>' for step in t['java_steps'])+'</ol><pre>mods</pre><p>'+e(t['beta_note'])+'</p></section>'
-    return f'<div class="narrow">{hero(lang,4,"guide")}{java}<h2>Horizon · 2.1.0</h2><div class="steps">{steps}</div><aside class="callout">{e(t["native_notice"])}</aside><section class="prose">{helptext}</section></div><section class="section">{closing(lang)}</section>'
+    return f'<div class="narrow">{hero(lang,4,"guide")}{java}<h2>Horizon · {e(RELEASES["horizon"]["version"])}</h2><div class="steps">{steps}</div><aside class="callout">{e(t["native_notice"])}</aside><section class="prose">{helptext}</section></div><section class="section">{closing(lang)}</section>'
 def project(lang):
     t=L[lang]; ids=('project','development','sources','discovery','privacy','images')
     sections=''.join(f'<section id="{ids[i]}"><h2>{e(a)}</h2><p>{e(b)}</p></section>' for i,(a,b) in enumerate(t['project_sections']))
@@ -114,7 +115,7 @@ def render(lang,i,body,missing=False):
     if i==0 and not missing:
         for edition in ['horizon']+[r['loader'] for r in RELEASES['java']['files']]:
             row=RELEASES['horizon'] if edition=='horizon' else next(r for r in RELEASES['java']['files'] if r['loader']==edition)
-            schema.append({'@context':'https://schema.org','@type':'SoftwareApplication','name':'Server Atlas — '+edition.title(),'applicationCategory':'GameApplication','operatingSystem':'Minecraft Java 26.3; '+edition.title(),'softwareVersion':'2.1.0' if edition=='horizon' else '2.2.0-beta','description':description,'license':'https://opensource.org/license/mit','downloadUrl':CANONICAL+'/downloads/'+row['name'],'offers':{'@type':'Offer','price':'0','priceCurrency':'EUR'}})
+            schema.append({'@context':'https://schema.org','@type':'SoftwareApplication','name':'Server Atlas — '+edition.title(),'applicationCategory':'GameApplication','operatingSystem':'Minecraft Java 26.3; '+edition.title(),'softwareVersion':RELEASES['horizon']['version'] if edition=='horizon' else '2.2.0-beta','description':description,'license':'https://opensource.org/license/mit','downloadUrl':CANONICAL+'/downloads/'+row['name'],'offers':{'@type':'Offer','price':'0','priceCurrency':'EUR'}})
     data=json.dumps(schema,ensure_ascii=False).replace('</','<\\/'); client=json.dumps(t['client'],ensure_ascii=False).replace('</','<\\/')
     return f'''<!doctype html><html lang="{lang}" data-base-path="{BASE}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f6f8f5"><title>{e(title)}</title><meta name="description" content="{e(description)}"><meta name="robots" content="{'noindex,follow' if missing else 'index,follow,max-image-preview:large'}"><link rel="canonical" href="{canonical}">{alternates}<link rel="icon" href="{asset('server-atlas-icon.png')}" type="image/png"><link rel="stylesheet" href="{asset('style.css')}"><meta property="og:type" content="website"><meta property="og:locale" content="{t['og']}"><meta property="og:site_name" content="Server Atlas"><meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(description)}"><meta property="og:url" content="{canonical}"><meta property="og:image" content="{CANONICAL}/assets/gallery/entdecken.png?v={VERSION}"><meta property="og:image:alt" content="{e(t['gallery'][1][1])} · Horizon"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{e(title)}"><meta name="twitter:description" content="{e(description)}"><meta name="twitter:image" content="{CANONICAL}/assets/gallery/entdecken.png?v={VERSION}"><script type="application/ld+json">{data}</script><script type="application/json" id="site-i18n">{client}</script><script src="{asset('app.js')}" defer></script></head><body>{nav(lang,i)}<main id="main">{body}</main>{footer(lang,i)}</body></html>'''
 def build():
@@ -126,7 +127,7 @@ def build():
         shutil.copyfile(original,DIST/'downloads'/row['name'])
     (DIST/'downloads/SHA256SUMS.txt').write_text(''.join(f"{row['sha256']}  {row['name']}\n" for row in rows),encoding='utf8')
     if (ROOT.parent/'mod/LICENSE').is_file():shutil.copyfile(ROOT.parent/'mod/LICENSE',DIST/'downloads/LICENSE.txt')
-    (DIST/'assets/servers.json').write_text(json.dumps({'updated':DAY,'source':'minecraftserve.rs, Modrinth and curated public listings','servers':S},ensure_ascii=False,separators=(',',':')),encoding='utf8')
+    (DIST/'assets/servers.json').write_text(json.dumps({'updated':CATALOG.get('updated','2026-11-03'),'source':'minecraftserve.rs, Modrinth and curated public listings','servers':S},ensure_ascii=False,separators=(',',':')),encoding='utf8')
     # Only remove generated HTML files, leaving source assets intact.
     for old in DIST.rglob('*.html'): old.unlink()
     for lang in L:

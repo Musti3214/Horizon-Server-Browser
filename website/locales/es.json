@@ -45,7 +45,7 @@
     "Menos búsquedas."
   ],
   "hero_lead": "Tu próximo mundo empieza con una buena lista de servidores. Descubre, filtra y guarda tus favoritos. Dentro del juego, con una interfaz familiar de Minecraft.",
-  "availability": "Horizon 2.1 · Fabric / Forge 2.2 beta · Minecraft 26.3",
+  "availability": "Horizon 2.2 · Fabric / Forge 2.2 beta · Minecraft 26.3",
   "recorded": "CAPTURADO EN HORIZON",
   "enlarge": "Ver a tamaño completo",
   "product_caption": "La interfaz que encontrarás de verdad en el juego.",
@@ -109,8 +109,8 @@
     "Con datos de ejemplo."
   ],
   "capture_context": [
-    "Las imágenes muestran el mod nativo 2.1.0 compilado en Horizon para Minecraft Java 26.3. Las listas personales usan perfiles temporales con servidores locales de prueba, notas y etiquetas. No aparecen mundos ni listas privadas de jugadores.",
-    "La imagen del directorio procede de una prueba real en línea. Todas las capturas se realizaron el 3 de noviembre de 2026. Los estados y las cifras de jugadores reflejan ese momento; las imágenes no están editadas. Las capturas muestran la interfaz del juego en alemán. Cambiar el idioma de la web no traduce las imágenes."
+    "Las imágenes muestran el mod nativo 2.2.0 compilado en Horizon para Minecraft Java 26.3. Las listas personales usan perfiles temporales con servidores locales de prueba, notas y etiquetas. No aparecen mundos ni listas privadas de jugadores.",
+    "La imagen del directorio procede de una prueba real en línea. Todas las capturas se realizaron el 4 de noviembre de 2026. Los estados y las cifras de jugadores reflejan ese momento; las imágenes no están editadas. Las capturas muestran la interfaz del juego en alemán. Cambiar el idioma de la web no traduce las imágenes."
   ],
   "directory_eyebrow": "Tu próximo servidor te espera",
   "directory_h1": [
@@ -160,11 +160,11 @@
   ],
   "platform_intro": "Descarga Server Atlas para Horizon, Fabric o Forge: busca servidores de Minecraft Java 26.3 con filtros y favoritos. Gratis y de código abierto.",
   "platform_text": [
-    "Mod nativo de Rust 2.1.0 para Horizon con código fuente. Requiere compilación nativa en el lanzador.",
+    "Mod nativo de Rust 2.2.0 para Horizon con código fuente. Requiere compilación nativa en el lanzador.",
     "Beta Fabric 2.2.0 para Minecraft 26.3. Java 25 y Fabric Loader 0.20.1+. Módulos necesarios de Fabric API incluidos.",
     "Beta Forge 2.2.0 para Minecraft 26.3. Java 25 y Minecraft Forge 66.1.5+. Mod solo de cliente."
   ],
-  "available": "Disponible · 2.1.0",
+  "available": "Disponible · 2.2.0",
   "planned": "Previsto",
   "development": "Estado del desarrollo",
   "download_details": "Ver descarga",
@@ -177,7 +177,7 @@
     ],
     [
       "¿Qué plataformas son compatibles?",
-      "Horizon 2.1.0 está disponible como .hnmod nativo, probado en Windows x64. Fabric y Forge 2.2.0 están disponibles como JAR en beta pública para Minecraft Java 26.3 / Java 25. Elige el archivo de tu cargador."
+      "Horizon 2.2.0 está disponible como .hnmod nativo, probado en Windows x64. Fabric y Forge 2.2.0 están disponibles como JAR en beta pública para Minecraft Java 26.3 / Java 25. Elige el archivo de tu cargador."
     ],
     [
       "¿Tengo que compilar en cada inicio?",
@@ -198,7 +198,7 @@
     "Una nueva aventura."
   ],
   "closing_text": "Descubre nuevos mundos. Conserva tus servidores favoritos. Empieza tu próxima aventura con Server Atlas.",
-  "closing_note": "Gratis · Horizon 2.1.0 · Fabric y Forge 2.2.0 beta",
+  "closing_note": "Gratis · Horizon 2.2.0 · Fabric y Forge 2.2.0 beta",
   "download_eyebrow": "Una descarga. Nuevas posibilidades.",
   "download_h1": [
     "Tu lista de servidores.",
@@ -229,7 +229,7 @@
   "guide_steps": [
     [
       "Descarga el mod",
-      "Descarga server-browser-2.1.0.hnmod. Contiene la implementación nativa en Rust para Horizon; no es un .jar para Fabric o Forge."
+      "Descarga server-browser-2.2.0.hnmod. Contiene la implementación nativa en Rust para Horizon; no es un .jar para Fabric o Forge."
     ],
     [
       "Elige la instancia correcta",
@@ -237,7 +237,7 @@
     ],
     [
       "Activa y compila el mod",
-      "En la página Mods del launcher, activa server_browser 2.1.0. Elige la opción normal de compilar para la revisión probada y revisa los mods. El jugador decide si acepta «I trust these mods: build»."
+      "En la página Mods del launcher, activa server_browser 2.2.0. Elige la opción normal de compilar para la revisión probada y revisa los mods. El jugador decide si acepta «I trust these mods: build»."
     ],
     [
       "Inicia la compilación terminada",
@@ -268,7 +268,7 @@
   "project_sections": [
     [
       "El proyecto",
-      "Proyecto comunitario independiente desarrollado para shuab. El paquete nativo de Horizon 2.1.0 usa licencia MIT, incluye las fuentes Rust y está dirigido a Minecraft Java 26.3. Probado en Windows x64. No requiere un parche separado del host ni un programa complementario."
+      "Proyecto comunitario independiente desarrollado para shuab. El paquete nativo de Horizon 2.2.0 usa licencia MIT, incluye las fuentes Rust y está dirigido a Minecraft Java 26.3. Probado en Windows x64. No requiere un parche separado del host ni un programa complementario."
     ],
     [
       "Versión y desarrollo",

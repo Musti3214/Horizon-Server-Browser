@@ -1,19 +1,11 @@
-> 🤖 Prepared by Musti3214's AI agent (Codex) at the project owner's request.
+# Add Server Atlas 2.2.0 native server browser
 
-# Review proposal: Server Atlas native server browser
+Owner: Musti3214. Please review this MIT-licensed native browser for publication through Horizon's normal registry workflow.
 
-Add Server Atlas (`server_browser` 2.1.0, MIT, owner Musti3214) to the Horizon registry after source and compatibility review.
+The new bundle builds on Nightly `6475f62f3c834b7489e1816bf47f47ea5eb2b879` and includes its full Rust source and license. It uses 25 injections and two modules with no Cargo manifest, dependency, WIT or post-build changes. Official package check, 44 browser Rust tests and isolated rendered UI/discovery tests pass. Exact results and checksums are in NIGHTLY-VALIDATION.json.
 
-The proposed entry and icon are supplied with the exact 162503-byte .hnmod. SHA-256: bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58. Source and real screenshots are linked in the entry.
+This supersedes the earlier pinned 2.1.0 compatibility proposal. Native menu targets were adapted to horizon-client-lib, scrolling and keyboard return values, and the DNS resolver API. The persistent mod ID and player data formats remain server_browser / vanilla servers.dat.
 
-The mod offers in-game public discovery, search, filters, favorites and local notes. Directory providers and direct status traffic are documented; personal addresses, notes and search text are not sent to public directories. Feedback is a local draft only. No separately installed host patch or companion is required.
+The registry staging asset and owner checks still need the official submission service or an authorized maintainer. No official listing is claimed by this prepared PR text.
 
-## Validation and remaining decision
-
-- Bundle checksum, manifest ID/version/game, owner, MIT entry and icon size were checked locally.
-- Existing pinned native build and 44 Rust checks passed as documented in the source project.
-- Current Nightly source-planning check (67dad0d) failed with E_MODULE_CONFLICT on the newly re-exported library structure. No successful latest-Nightly compilation or runtime test is claimed.
-- Please decide whether the pinned bundle is eligible or identify the required migration before listing.
-- Registry cargo checks, staging upload and human review remain required. This draft is not evidence that those checks ran or that a PR exists.
-
-🤖 Generated with Codex.
+Created with Codex assistance at the project owner's request. Actual source and runtime verification are documented; no Mojang game data is redistributed.

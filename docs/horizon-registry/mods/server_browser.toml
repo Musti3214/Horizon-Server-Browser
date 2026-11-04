@@ -1,0 +1,31 @@
+id = "server_browser"
+kind = "native-mod"
+name = "Server Atlas"
+summary = "Discover and organize Minecraft servers in-game with filters, favorites and local notes."
+description = """
+Server Atlas is a native Rust multiplayer browser for Horizon and Minecraft Java 26.3, with Minecraft-style buttons and translucent server rows.
+
+Features: search names, addresses, MOTDs, tags and notes; favorites; recent and LAN views; status, version, ping, player-count, language and region filters; local notes/groups; custom ordering; saved filter profiles; JSON/NBT import/export with preservation of unknown vanilla fields. Public discovery combines Modrinth and minecraftserve.rs with 2,835 bundled public addresses. English and German are included.
+
+Install the .hnmod into your Horizon instance, enable it, build through the official launcher, then open Multiplayer. Native code runs with your user permissions. No separately installed host patch or companion program is required.
+
+Version 2.2.0 was built and tested on Nightly 2026-11-04, Horizon 6475f62f3c834b7489e1816bf47f47ea5eb2b879, with horizon-mixins a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab. It adapts to the client library split and updated scrolling, keyboard actions and DNS resolver. 44 Rust tests and isolated game checks passed. Other future revisions and combinations of native mods require their own build checks.
+
+Public discovery is enabled by default and can be switched off. Personal server lists, notes and searches are not submitted to listing providers. Normal status pings contact the servers being checked. Feedback saves local drafts; automatic email delivery is not configured. Connections and authentication use Horizon's existing implementation.
+
+Real game images and instructions: https://musti3214.github.io/Horizon-Server-Browser/
+Validation: https://github.com/Musti3214/Horizon-Server-Browser/blob/v2.2.0/docs/VALIDATION.md
+"""
+authors = ["shuab"]
+owners = ["Musti3214"]
+license = "MIT"
+source = "https://github.com/Musti3214/Horizon-Server-Browser/tree/v2.2.0/mod"
+icon = "icons/server_browser.png"
+
+[[versions]]
+version = "2.2.0"
+published = "2026-11-04"
+game = "26.3"
+file = "server_browser-2.2.0.hnmod"
+sha256 = "e65411ec3ed57c2ef288b627d0337cb1592762c24a869024a301b4c57bdfa94e"
+changelog = "Updated for Horizon Nightly 2026-11-04 (6475f62): client library split, scroll and keyboard action returns, DNS resolver API; Server Atlas branding; 44 Rust tests and isolated game checks."

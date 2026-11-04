@@ -83,6 +83,14 @@ def workflow(d, report):
 
 
 def lifecycle(args, report):
+    def open_classic(d):
+        d.click("Multiplayer")
+        # New Horizon shows the vanilla first-use online-play notice in a
+        # fresh profile. This fixture owns that profile and proceeds normally.
+        d.wait(lambda: d.node("Proceed") or any(w.get("label")=="Join Server" for w in d.ui()), "Classic or online-play notice")
+        if d.node("Proceed"):
+            d.click("Proceed")
+        d.wait(lambda: any(w.get("label")=="Join Server" for w in d.ui()), "disabled mod Classic")
     original_seed = fixture.seed
     def disabled_seed(home, port, large):
         raw = original_seed(home, port, large)
@@ -93,14 +101,13 @@ def lifecycle(args, report):
     fixture.seed = original_seed
     try:
         d.wait(lambda: d.node("Multiplayer"), "disabled mod title", seconds=180)
-        d.click("Multiplayer")
-        d.wait(lambda: any(w.get("label")=="Join Server" for w in d.ui()), "disabled mod Classic")
+        open_classic(d)
         assert not d.node(fixture.label("search"), "field")
         assert (d.home / "servers.dat").read_bytes() == d.original
         d.click("Back")
         d.click("Options...")
         d.click("Mods...")
-        row = d.wait(lambda: next((w for w in d.ui() if w.get("label", "").startswith("Modern Server Browser 2.1.0")), None), "native mod toggle")
+        row = d.wait(lambda: next((w for w in d.ui() if w.get("label", "").startswith("Server Atlas 2.2.0")), None), "native mod toggle")
         d.call("click", row["id"])
         d.click("Done")
         d.click("Done")
@@ -110,12 +117,11 @@ def lifecycle(args, report):
         d.click(fixture.label("back"))
         d.click("Options...")
         d.click("Mods...")
-        row = d.wait(lambda: next((w for w in d.ui() if w.get("label", "").startswith("Modern Server Browser 2.1.0")), None), "native mod off toggle")
+        row = d.wait(lambda: next((w for w in d.ui() if w.get("label", "").startswith("Server Atlas 2.2.0")), None), "native mod off toggle")
         d.call("click", row["id"])
         d.click("Done")
         d.click("Done")
-        d.click("Multiplayer")
-        d.wait(lambda: any(w.get("label")=="Join Server" for w in d.ui()), "disabled native mod restores Classic")
+        open_classic(d)
         assert (d.home / "servers.dat").read_bytes() == d.original
         report["checks"].append("Options > Mods toggles native browser on/off; disabled mod keeps Classic and byte-identical servers.dat")
     finally:

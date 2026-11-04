@@ -1,5 +1,5 @@
 {
-  "horizon.browser.title": "Server Browser",
+  "horizon.browser.title": "Server Atlas",
   "horizon.browser.search": "Search name, address, MOTD, tags, notes…",
   "horizon.browser.result_count": "%s of %s servers",
   "horizon.browser.settings": "Settings",

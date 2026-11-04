@@ -8,8 +8,9 @@ fn hook(game: &mut crate::game::Game<'_>) {
     } else {
         horizon_client::server_browser::native::close();
     }
-    if let Some(address) = horizon_client::server_browser::native::take_connect()
-        && let Err(error) = game.connect_server(&address, &game.options.player_name())
+    if let Some((address, lan)) = horizon_client::server_browser::native::take_connect()
+        && let Err(error) =
+            game.connect_server_with_options(&address, &game.options.player_name(), None, lan)
     {
         log::warn!("Server Browser: {error}");
     }

@@ -6,10 +6,11 @@ import re
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-EXPECTED='bb6bb8e5e89299a0d853ce85db520205564da8b77576b61fbf6054eb200bfd58'
-package=ROOT/'downloads/server-browser-2.1.0.hnmod'
+release=json.loads((ROOT/'website/releases.json').read_text(encoding='utf8'))['horizon']
+EXPECTED=release['sha256']
+package=ROOT/'downloads'/release['name']
 assert hashlib.sha256(package.read_bytes()).hexdigest()==EXPECTED
-assert (ROOT/'downloads/server-browser-2.1.0.sha256').read_text().split()[0]==EXPECTED
+assert package.with_suffix('.sha256').read_text().split()[0]==EXPECTED
 config=json.loads((ROOT/'mod/feedback-public.json').read_text(encoding='utf8'))
 assert config=={'provider':'staticforms','form_public_key':''},'Public export must not contain a configured mail key'
 java_manifest=json.loads((ROOT/'downloads/java-manifest.json').read_text(encoding='utf8'))
@@ -26,15 +27,16 @@ for release in java_manifest['files']:
         if release['loader']=='fabric':assert json.loads(java.read('fabric.mod.json'))['name']=='Server Atlas'
 with zipfile.ZipFile(package) as archive:
     names=archive.namelist()
-    assert len(names)==len(set(names))==29
+    assert len(names)==len(set(names))==30
     for name in names:
         path=Path(name)
         assert not path.is_absolute() and '..' not in path.parts
-        assert path.suffix in ('.rs','.json','.toml')
-        assert archive.read(name)==(ROOT/'mod'/path).read_bytes(),name
+        assert path.suffix in ('.rs','.json','.toml') or path.name=='LICENSE'
+        source=ROOT/'mod/LICENSE' if path.name=='LICENSE' else ROOT/'mod'/path
+        assert archive.read(name)==source.read_bytes(),name
     manifest=json.loads(archive.read('horizon-native.json'))
-    assert manifest['id']=='server_browser' and manifest['version']=='2.1.0'
-    assert manifest['horizon']=='142388e1c136e622652ec7505af15d8ad195e041'
+    assert manifest['id']=='server_browser' and manifest['version']=='2.2.0'
+    assert manifest['horizon']=='6475f62f3c834b7489e1816bf47f47ea5eb2b879'
     assert manifest['mixins']=='a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab'
     assert manifest['game']=='26.3'
     assert b'const FORM_KEY: &str = "";' in archive.read('mixins/server_browser/runtime.rs')

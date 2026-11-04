@@ -228,7 +228,7 @@ impl Browser {
                         address: address.clone(),
                         ..Server::default()
                     });
-                    return Outcome::Connect(address);
+                    return Outcome::Connect { address, lan: false };
                 }
             }
             Modal::Remove if id == 50 => {

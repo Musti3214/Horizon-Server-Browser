@@ -94,9 +94,9 @@ fn payload(key:&str, category:usize, text:&str)->Result<Vec<u8>,Status> {
     let category=["Idea","Bug","Public server suggestion","General"][category];
     serde_json::to_vec(&serde_json::json!({
         "apiKey":key,
-        "name":"Horizon Server Browser",
+        "name":"Server Atlas",
         "category":category,
-        "mod_version":"2.1.0",
+        "mod_version":"2.2.0",
         "message":text,
         "honeypot":""
     })).map_err(|_|Status::Failed)
@@ -109,7 +109,7 @@ fn acknowledgement(bytes:&[u8])->Result<(),Status> {
 fn transmit(body:Vec<u8>)->Result<(),Status> {
     let agent=ureq::AgentBuilder::new().redirects(0).timeout(Duration::from_secs(10)).build();
     let response=agent.post(ENDPOINT).set("Content-Type","application/json")
-        .set("Accept","application/json").set("User-Agent","Horizon-Server-Browser/2.0")
+        .set("Accept","application/json").set("User-Agent","Server-Atlas/2.2.0")
         .send_bytes(&body).map_err(|e| if matches!(e,ureq::Error::Status(429,_)) {Status::Limited} else {Status::Failed})?;
     if response.status()!=200 { return Err(Status::Failed); }
     let mut bytes=Vec::new();

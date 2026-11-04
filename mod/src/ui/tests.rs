@@ -337,7 +337,7 @@ fn double_click_to_join_and_keyboard_jump() {
     assert_eq!(b.state.view.selected.as_deref(), Some(addr.as_str()));
 
     let outcome = b.click(None, (left + 50.0, top + 12.0), (854.0, 480.0));
-    assert!(matches!(outcome, Outcome::Connect(a) if a == addr));
+    assert!(matches!(outcome, Outcome::Connect { address, lan:false } if address == addr));
 
     b.key(KeyCode::End, false, false);
     assert_eq!(b.state.view.selected.as_deref(), Some("127.0.0.1:30002"));
