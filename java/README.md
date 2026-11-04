@@ -1,6 +1,8 @@
-# Server Browser — Fabric and Forge
+# Server Atlas — Fabric and Forge
 
 Formerly Horizon Server Browser. The client mod brings the Horizon Server Browser's Minecraft interface to Java Edition: the same five tabs, translucent server rows, native Minecraft controls, filter pages, action bar and server details.
+
+**Public beta:** see [VALIDATION.md](VALIDATION.md) for tested behavior and remaining runtime checks. Existing `server_browser` identifiers and filenames are retained to preserve settings.
 
 ## Install
 
@@ -13,7 +15,7 @@ Version **2.2.0** targets **Minecraft 26.3** and **Java 25**.
 
 1. Install the matching loader in your Minecraft launcher.
 2. Open that instance's `mods` folder and add **one** matching JAR. Remove older Server Browser JARs from that instance.
-3. Start Minecraft and choose **Multiplayer**. The Server Browser opens automatically. **Classic** returns to the original screen; its Server Browser button opens this mod again.
+3. Start Minecraft and choose **Multiplayer**. Server Atlas opens automatically. **Classic** returns to the original screen; its Server Atlas button opens this mod again.
 
 These are client mods: servers need no installation. Fabric's two small resource-loading modules are included inside the Fabric JAR; a separate Fabric API download is unnecessary. This port does not require Horizon or a native Horizon build. The Horizon `.hnmod` is a separate edition.
 

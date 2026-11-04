@@ -1,0 +1,24 @@
+{
+  "name": "Server Atlas",
+  "slug": "server-atlas-browser",
+  "summary": "Discover Minecraft servers in-game with filters, favorites, notes and a familiar Minecraft interface.",
+  "license": "MIT",
+  "client_side": "required",
+  "server_side": "unsupported",
+  "categories": [
+    "utility",
+    "social"
+  ],
+  "minecraft": [
+    "26.3"
+  ],
+  "loaders": [
+    "fabric",
+    "forge"
+  ],
+  "version_type": "beta",
+  "source": "https://github.com/Musti3214/Horizon-Server-Browser",
+  "website": "https://musti3214.github.io/Horizon-Server-Browser/",
+  "issues": "https://github.com/Musti3214/Horizon-Server-Browser/issues",
+  "donation": "https://ko-fi.com/foryou41"
+}

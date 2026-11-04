@@ -177,7 +177,7 @@
     ],
     [
       "Which platforms are supported?",
-      "Version 2.1.0 is available as a native Horizon .hnmod for Minecraft Java 26.3, tested on Windows x64. Fabric and Forge ports are planned and do not have downloads yet."
+      "Horizon 2.1.0 is available as a native .hnmod, tested on Windows x64. Fabric and Forge 2.2.0 are available as public beta JARs for Minecraft Java 26.3 / Java 25. Choose the download for your loader."
     ],
     [
       "Do I rebuild at every launch?",
@@ -198,7 +198,7 @@
     "And a new adventure."
   ],
   "closing_text": "Discover new worlds. Keep your favorite servers. Start your next adventure with Server Atlas.",
-  "closing_note": "Free · Version 2.1.0 · Fabric and Forge planned",
+  "closing_note": "Free · Horizon 2.1.0 · Fabric & Forge 2.2.0 beta",
   "download_eyebrow": "One download. New possibilities.",
   "download_h1": [
     "Your server list.",

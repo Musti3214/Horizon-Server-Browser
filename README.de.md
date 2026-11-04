@@ -44,7 +44,7 @@ verschiedene Horizon-Quellstände benötigen. [Anleitung](docs/INSTALLATION.md).
 ## Stand
 
 Horizon 2.1.0 für Minecraft Java 26.3 ist verfügbar und unter Windows x64 getestet.
-Fabric und Forge sind geplant; es gibt noch keine entsprechenden `.jar`-Dateien.
+Fabric und Forge 2.2.0 sind als öffentliche Beta-JARs für Minecraft 26.3 / Java 25 verfügbar. [Java-Anleitung und Prüfbericht](java/README.md).
 Feedback- und Servervorschlagsentwürfe bleiben lokal; automatischer Mailversand
 ist noch nicht konfiguriert. [Datenschutz](docs/PRIVACY.md).
 
