@@ -27,7 +27,10 @@ Community introductions were published and their individual pages verified on 5 
 - [r/fabricmc — Fabric beta introduction](https://www.reddit.com/r/fabricmc/comments/1xo4n5a/server_atlas_for_fabric_263_a_familiar/)
 - [r/MinecraftForge — Forge beta showcase and test limits](https://www.reddit.com/r/MinecraftForge/comments/1xo4o5k/server_atlas_forge_263_beta_saved_server_groups/)
 
-Modrinth and CurseForge projects have not been created or submitted by this session. A GitHub release or a local launcher build does not create a marketplace listing. Reddit posts remain subject to community moderation.
+- [Modrinth](https://modrinth.com/mod/server-atlas) — the project is under moderation. Separate Fabric and Forge beta versions are uploaded for Minecraft Java 26.3.
+- [CurseForge author dashboard](https://authors.curseforge.com/#/projects/1784709/files) — both beta files have been uploaded and are processing. The project and files await platform approval.
+
+Reddit posts remain subject to community moderation.
 
 The project was developed and publication materials were prepared with Codex assistance at the owner's request. Feedback currently saves local drafts; automatic email delivery is unconfigured.
 
