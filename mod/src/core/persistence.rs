@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn versioned_fixture_defaults_unknown_fields_and_future_schema() {
         let dir = scratch();
-        assert!(load_state(&dir).unwrap().settings.online_directory);
+        assert!(!load_state(&dir).unwrap().settings.online_directory);
         let path = state_path(&dir);
         fs::write(&path, include_bytes!("../tests/fixtures/state-v1.json")).unwrap();
         let mut state = load_state(&dir).unwrap();

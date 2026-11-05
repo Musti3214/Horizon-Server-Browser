@@ -228,10 +228,11 @@ mod tests {
     #[test]
     fn bundled_catalog_has_unique_valid_addresses() {
         let mut addresses=std::collections::HashSet::new();
-        for (_,address,_) in super::super::catalog::CURATED_SERVERS.iter().chain(super::super::catalog::DIRECTORY_SNAPSHOT).chain(super::super::catalog::MODRINTH_SNAPSHOT) {
+        for (_,address,tags) in super::super::catalog::CURATED_SERVERS.iter().chain(super::super::catalog::DIRECTORY_SNAPSHOT).chain(super::super::catalog::MODRINTH_SNAPSHOT) {
             assert!(core::address::parse(address).is_ok());
             assert!(addresses.insert(core::address::key(address).unwrap()));
+            assert!(!tags.iter().any(|tag| core::query::offline_access_tag(tag)));
         }
-        assert_eq!(addresses.len(),2835);
+        assert_eq!(addresses.len(),2382);
     }
 }

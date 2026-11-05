@@ -191,8 +191,6 @@ impl Browser {
             (135, !f.language.is_empty(), "language"),
             (136, !f.region.is_empty(), "region"),
             (137, f.favorites, "favorites"),
-            (138, f.auth.is_some(), "auth"),
-            (139, f.joinable, "joinable"),
             (140, !f.group.is_empty(), "group"),
         ]
         .into_iter()
@@ -550,8 +548,6 @@ impl Browser {
                         label_value("not_empty", on(f.not_empty)),
                         label_value("not_full", on(f.not_full)),
                         label_value("favorites", on(f.favorites)),
-                        label_value("joinable", on(f.joinable)),
-                        label_value("auth", f.auth.map(auth_name).unwrap_or_else(|| tr("any"))),
                     ];
                     for (i, value) in values.into_iter().enumerate() {
                         b(
@@ -684,16 +680,7 @@ impl Browser {
                     };
                     b(id, label, x + i as f32 * (cat_w + 4.0), 45.0, cat_w, true);
                 }
-                let half_w = (fw - 4.0) / 2.0;
-                b(96, tr("feedback_save"), x, h - 55.0, half_w, true);
-                b(
-                    97,
-                    tr("feedback_send"),
-                    x + half_w + 4.0,
-                    h - 55.0,
-                    half_w,
-                    self.runtime.borrow().feedback.status != feedback::Status::Sending,
-                );
+                b(96, tr("feedback_save"), x, h - 55.0, fw, true);
             }
             _ => {}
         }
@@ -1253,17 +1240,10 @@ impl Browser {
             if let Modal::Feedback { text: content, .. } = &self.modal {
                 let counter = format!("{}/500", content.chars().count());
                 text(batch, atlas, &counter, w - 80.0, 10.0, 68.0, MUTED);
-                let status = if r.feedback.status == feedback::Status::Idle
-                    && !feedback::Sender::configured()
-                {
-                    feedback::Status::NotConfigured
-                } else {
-                    r.feedback.status
-                };
                 self.paragraph(
                     batch,
                     atlas,
-                    &tr(status.key()),
+                    &tr("feedback_local"),
                     [20.0, 108.0, w - 40.0, (h - 180.0).max(24.0)],
                     MUTED,
                 );
@@ -1447,7 +1427,6 @@ impl Browser {
             s.metadata.tags.join(", "),
         )));
         lines.push(Text::literal(label_value("notes", &s.metadata.notes)));
-        lines.push(Text::literal(tr("auth_note")));
         let wrapped = lines
             .iter()
             .flat_map(|line| atlas.font.split(line, w - 27.0))
@@ -1530,12 +1509,7 @@ impl Browser {
             let value = if cursor.0 > left + width - 120.0 && cursor.0 < left + width - 32.0 {
                 status.map(|s| s.samples.join("\n")).unwrap_or_default()
             } else {
-                format!(
-                    "{}\n{}\n{}",
-                    health(status),
-                    auth_name(s.metadata.auth),
-                    tr("auth_note")
-                )
+                health(status)
             };
             if !value.is_empty() {
                 let max_lines = ((batch.height - 20.0) / 10.0).floor().max(1.0) as usize;

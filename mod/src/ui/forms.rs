@@ -275,14 +275,6 @@ impl Browser {
                     73 => f.not_empty = !f.not_empty,
                     74 => f.not_full = !f.not_full,
                     75 => f.favorites = !f.favorites,
-                    76 => f.joinable = !f.joinable,
-                    77 => {
-                        f.auth = match f.auth {
-                            None => Some(AuthMode::Offline),
-                            Some(AuthMode::Offline) => Some(AuthMode::Online),
-                            _ => None,
-                        }
-                    }
                     50 => {
                         let number = |i: usize| {
                             if self.fields[i].trim().is_empty() {
@@ -343,7 +335,11 @@ impl Browser {
                             _ => 0,
                         }
                     }
-                    84 => s.online_directory = !s.online_directory,
+                    84 if !s.online_directory => {
+                        self.show(Modal::Consent);
+                        return Outcome::None;
+                    }
+                    84 => s.online_directory = false,
                     85 => {
                         *s = core::model::Settings::default();
                         self.state.view = View::default();
@@ -401,7 +397,7 @@ impl Browser {
             Modal::Consent if id == 50 => {
                 self.state.settings.online_directory = true;
                 self.save_metadata();
-                self.show(Modal::Settings);
+                self.main();
             }
             Modal::Presets(name) => {
                 if id == 50 {
@@ -494,7 +490,7 @@ impl Browser {
                     };
                     self.changed();
                 }
-                50 | 96 | 97 => {
+                96 => {
                     let trimmed = text.trim();
                     if trimmed.is_empty() {
                         self.error = Some(tr("feedback_empty"));
@@ -529,11 +525,6 @@ impl Browser {
                     }
                     Ok(()) })();
                     if saved.is_err() { self.error=Some(tr("feedback_draft_failed")); return Outcome::None; }
-                    if id != 96 {
-                        self.runtime.get_mut().feedback.send(&self.home,category,trimmed);
-                        self.error=None;
-                        return Outcome::None;
-                    }
                     self.notice = Some((
                         if category == 2 {
                             tr("feedback_server_saved")

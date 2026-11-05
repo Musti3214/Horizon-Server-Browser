@@ -19,10 +19,10 @@
     ]
   },
   "horizon": {
-    "name": "server-browser-2.2.0.hnmod",
-    "version": "2.2.0",
-    "size": 163518,
-    "sha256": "e65411ec3ed57c2ef288b627d0337cb1592762c24a869024a301b4c57bdfa94e",
+    "name": "server-browser-2.2.1.hnmod",
+    "version": "2.2.1",
+    "size": 145083,
+    "sha256": "71279e980f3861608810f762fed93cb3264bc5b069b0200f3e9f46099418e8c3",
     "horizon": "6475f62f3c834b7489e1816bf47f47ea5eb2b879",
     "tested_nightly": "2026-11-04 \u00b7 6475f62"
   }

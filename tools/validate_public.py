@@ -6,13 +6,12 @@ import re
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-release=json.loads((ROOT/'website/releases.json').read_text(encoding='utf8'))['horizon']
-EXPECTED=release['sha256']
-package=ROOT/'downloads'/release['name']
+native=json.loads((ROOT/'website/releases.json').read_text(encoding='utf8'))['horizon']
+EXPECTED=native['sha256']
+package=ROOT/'downloads'/native['name']
 assert hashlib.sha256(package.read_bytes()).hexdigest()==EXPECTED
 assert package.with_suffix('.sha256').read_text().split()[0]==EXPECTED
-config=json.loads((ROOT/'mod/feedback-public.json').read_text(encoding='utf8'))
-assert config=={'provider':'staticforms','form_public_key':''},'Public export must not contain a configured mail key'
+assert not (ROOT/'mod/feedback-public.json').exists()
 java_manifest=json.loads((ROOT/'downloads/java-manifest.json').read_text(encoding='utf8'))
 allowed_jars={'java/gradle/wrapper/gradle-wrapper.jar'}
 for release in java_manifest['files']:
@@ -24,7 +23,12 @@ for release in java_manifest['files']:
         assert 'pack.mcmeta' in java.namelist()
         assert all(not n.endswith('.class') or n.startswith('io/github/musti3214/serverbrowser/') for n in java.namelist())
         assert all(not n.startswith(('net/minecraft/','com/mojang/')) for n in java.namelist())
-        if release['loader']=='fabric':assert json.loads(java.read('fabric.mod.json'))['name']=='Server Atlas'
+        if release['loader']=='fabric':
+            fabric = json.loads(java.read('fabric.mod.json'))
+            assert fabric['name']=='Server Atlas'
+            assert fabric['jars'] and all(
+                java.getinfo(jar['file']).file_size > 0 for jar in fabric['jars']
+            )
 with zipfile.ZipFile(package) as archive:
     names=archive.namelist()
     assert len(names)==len(set(names))==30
@@ -35,11 +39,14 @@ with zipfile.ZipFile(package) as archive:
         source=ROOT/'mod/LICENSE' if path.name=='LICENSE' else ROOT/'mod'/path
         assert archive.read(name)==source.read_bytes(),name
     manifest=json.loads(archive.read('horizon-native.json'))
-    assert manifest['id']=='server_browser' and manifest['version']=='2.2.0'
-    assert manifest['horizon']=='6475f62f3c834b7489e1816bf47f47ea5eb2b879'
+    assert manifest['id']=='server_browser' and manifest['version']==native['version']
+    assert manifest['horizon']==native['horizon']
     assert manifest['mixins']=='a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab'
     assert manifest['game']=='26.3'
-    assert b'const FORM_KEY: &str = "";' in archive.read('mixins/server_browser/runtime.rs')
+    runtime=archive.read('mixins/server_browser/runtime.rs')
+    assert b'staticforms.dev' not in runtime and b'FORM_KEY' not in runtime
+    assert b'online_directory_consent' in runtime
+    assert b'Copyright (c) 2026 shuab' in archive.read('mixins/server_browser/LICENSE')
 
 count=0
 skip={'.git','__pycache__','preview','qa','node_modules','target','.local'}

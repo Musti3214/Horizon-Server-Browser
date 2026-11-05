@@ -109,6 +109,9 @@ pub struct Settings {
     /// Zero disables automatic refresh.
     pub refresh_seconds: u64,
     pub concurrent_pings: usize,
+    // Older releases persisted the default-on switch under a different key.
+    // Only an explicit confirmation in this release enables the directory.
+    #[serde(rename = "online_directory_consent")]
     pub online_directory: bool,
     pub show_offline: bool,
     pub reduced_motion: bool,
@@ -123,7 +126,7 @@ impl Default for Settings {
             classic_menu: false,
             refresh_seconds: 60,
             concurrent_pings: 8,
-            online_directory: true,
+            online_directory: false,
             show_offline: true,
             reduced_motion: false,
             default_tab: Tab::Saved,

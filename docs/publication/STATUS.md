@@ -2,6 +2,12 @@
 
 Updated 5 November 2026 (Europe/Berlin).
 
+## Horizon review revision 2.2.1
+
+The native package and public source address the [2.2.0 registry review](https://github.com/horizon-rust/horizon-mods/pull/248#issuecomment-6656913316). Discover probes the visible window plus a small margin. Offline-access search controls and flagged discovery listings were removed. Online discovery requires explicit consent, feedback stays local, and the MIT copyright holder is shuab.
+
+The [2.2.1 native file](../../downloads/server-browser-2.2.1.hnmod) passed the official Horizon package check. See [validation](../../mod/VALIDATION-2.2.1.md) for the tested revision and checksum. Horizon's registry review is a separate step.
+
 ## Horizon native edition 2.2.0
 
 The [native release](https://github.com/Musti3214/Horizon-Server-Browser/releases/tag/v2.2.0) is public. Its exact file is `server-browser-2.2.0.hnmod`, 163518 bytes, SHA-256 `e65411ec3ed57c2ef288b627d0337cb1592762c24a869024a301b4c57bdfa94e`.
@@ -18,7 +24,7 @@ Install through the normal native mod workflow and rebuild the selected Horizon 
 
 ## Official catalogs and community posts
 
-**Submitted through the official Horizon form:** [registry PR #248](https://github.com/horizon-rust/horizon-mods/pull/248), adding `server_browser` 2.2.0. The [official registry check](https://github.com/horizon-rust/horizon-mods/actions/runs/41939774642) passed. The PR is open and has not been merged; approval and a public catalog listing are not yet confirmed. Human source review is still required. The registry submission references the tagged 2.2.0 source and the exact native checksum above.
+The first Horizon submission, [registry PR #248](https://github.com/horizon-rust/horizon-mods/pull/248), covers `server_browser` 2.2.0. Its [automated registry check](https://github.com/horizon-rust/horizon-mods/actions/runs/41939774642) passed. The [source review](https://github.com/horizon-rust/horizon-mods/pull/248#issuecomment-6656913316) requested a revised version for a new submission. A reviewer must approve and merge the registry entry before it appears in the catalog.
 
 Community introductions were published and their individual pages verified on 5 November 2026:
 
@@ -33,4 +39,3 @@ Community introductions were published and their individual pages verified on 5 
 Reddit posts remain subject to community moderation.
 
 The project was developed and publication materials were prepared with Codex assistance at the owner's request. Feedback currently saves local drafts; automatic email delivery is unconfigured.
-

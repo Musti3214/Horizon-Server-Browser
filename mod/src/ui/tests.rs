@@ -354,6 +354,80 @@ fn double_click_to_join_and_keyboard_jump() {
 }
 
 #[test]
+fn discover_probes_only_the_viewport_on_load_scroll_and_auto_refresh() {
+    let (mut b, home) = browser();
+    b.state.settings.online_directory = true;
+    b.state.settings.reduced_motion = true;
+    b.state.settings.refresh_seconds = 60;
+    b.state.view.tab = Tab::Discover;
+    let (sent, received) = std::sync::mpsc::channel();
+    {
+        let r = b.runtime.get_mut();
+        r.service = PingService::with_probe(1, std::sync::Arc::new(move |address, _| {
+            sent.send(address.to_owned()).unwrap();
+            Ok(Status { health: Health::Online, ..Status::default() })
+        })).unwrap();
+        r.directory.last_filter = Some((String::new(), String::new()));
+        *r.directory.reply.lock().unwrap() = Some(Ok(core::directory::Page {
+            servers: (0..2500).map(|i| Server {
+                name: format!("Server {i}"),
+                address: format!("s{i}.test:25565"),
+                ..Server::default()
+            }).collect(),
+            page: 1,
+            pages: 1,
+            total: 2500,
+            ..Default::default()
+        }));
+    }
+    let check_window = |first: usize, count: usize| {
+        let start = first.saturating_sub(2);
+        let end = first + count + 2;
+        assert!(end - start < 30);
+        for i in start..end {
+            assert_eq!(received.recv_timeout(Duration::from_secs(5)).unwrap(),
+                format!("s{i}.test:25565"));
+        }
+        assert!(received.recv_timeout(Duration::from_millis(40)).is_err());
+    };
+    b.sync(&mut b.runtime.borrow_mut());
+    let (first, count) = b.runtime.get_mut().ping_window.unwrap();
+    assert_eq!(first, 0);
+    check_window(first, count);
+    b.sync(&mut b.runtime.borrow_mut());
+    assert!(received.try_recv().is_err());
+
+    b.runtime.get_mut().scroll.amount = 200.0 * draw::ROW;
+    b.sync(&mut b.runtime.borrow_mut());
+    assert_eq!(b.runtime.get_mut().ping_window, Some((200, count)));
+    check_window(200, count);
+
+    b.runtime.get_mut().refreshed = Instant::now() - Duration::from_secs(61);
+    b.sync(&mut b.runtime.borrow_mut());
+    check_window(200, count);
+    drop(b);
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn discover_requires_new_consent_after_an_upgrade() {
+    let (mut b, home) = browser();
+    let migrated: State = serde_json::from_str(r#"{"settings":{"online_directory":true}}"#).unwrap();
+    assert!(!migrated.settings.online_directory);
+    b.show(Modal::Settings);
+    b.activate(84);
+    assert!(matches!(b.modal, Modal::Consent));
+    assert!(!b.state.settings.online_directory);
+    b.activate(50);
+    assert!(persistence::load_state(&home).unwrap().settings.online_directory);
+    b.show(Modal::Settings);
+    b.activate(84);
+    assert!(!persistence::load_state(&home).unwrap().settings.online_directory);
+    drop(b);
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn discover_infinite_scroll_and_curated_catalog() {
     let (mut b, home) = browser();
     b.state.settings.online_directory = true;

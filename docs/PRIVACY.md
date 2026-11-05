@@ -8,26 +8,24 @@ preserved. The mod does not upload the player's saved server list.
 
 ## Public discovery
 
-The opt-in setting is enabled for fresh settings; an existing explicit Off stays
-Off. Public requests go to minecraftserve.rs and api.modrinth.com. Each source has
+Online discovery starts disabled, including for users upgrading from 2.2.0. It
+starts after the player confirms the in-game privacy screen. Requests go to
+minecraftserve.rs and api.modrinth.com. Each source has
 a separate five-minute cache and a persistent limit of one request per minute.
 Search text, player names, personal addresses and notes are not sent to these
 directory APIs. Modrinth supplies public addresses, categories, language and region;
 its status metadata is not treated as a fresh direct ping. Modpacks and listing
 images are not downloaded or installed.
 
-Ordinary server-status requests contact the listed server addresses directly.
+Discover sends direct status pings to visible rows and a small margin. Scrolling
+updates that window and automatic refresh checks the window or the saved list.
 Those operators can observe the connecting IP and the request. Authentication
 and joining use Horizon's existing account/network implementation.
 
 ## Feedback
 
-Version 2.1.0 saves feedback and server-proposal drafts locally. The public mail
-submission key is empty, so automatic email delivery is not configured. No mail
-password, account token or recipient address is included in the public package.
-If a future version configures a form provider, sending must remain an explicit
-user action with clear result states. Private saved servers must never be submitted
-automatically.
+The native edition saves feedback and server-proposal drafts locally. The toolbar
+Ko-fi button opens `https://ko-fi.com/foryou41` in the default browser.
 
 ## Website
 

@@ -1,6 +1,6 @@
 [mod]
 id = "server_browser"
-version = "2.2.0"
+version = "2.2.1"
 priority = 100
 [compatibility]
 horizon_revision = "6475f62f3c834b7489e1816bf47f47ea5eb2b879"

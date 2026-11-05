@@ -15,7 +15,7 @@ SOURCE = ROOT / "src"
 OUT = ROOT / "mixins/server_browser"
 REV = "6475f62f3c834b7489e1816bf47f47ea5eb2b879"
 MIXINS = "a2af5c0dd4117d51ecd70066ba7a00b4a2c10dab"
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 
 def items(text):
@@ -52,14 +52,8 @@ def assemble():
         source = source.replace("horizon_protocol::connection::server_addresses(", "horizon_protocol::connection::server_browser_resolver::addresses(")
         core = core.replace(f"pub mod {name};", f"pub mod {name} {{\n{source}\n}}")
     source = items(read("crates/horizon-client/src/server_browser/mod.rs"))
-    feedback_config = json.loads((ROOT / "feedback-public.json").read_text(encoding="utf-8"))
-    assert feedback_config["provider"] == "staticforms"
-    form_key = feedback_config["form_public_key"]
-    assert not form_key or re.fullmatch(r"[a-zA-Z0-9_-]{16,200}", form_key), "Expected a public submission key only"
-    for name in ("draw", "forms", "online", "feedback", "tests"):
+    for name in ("draw", "forms", "online", "tests"):
         body = items(read(f"crates/horizon-client/src/server_browser/{name}.rs"))
-        if name == "feedback":
-            body = body.replace('const FORM_KEY: &str = "";', 'const FORM_KEY: &str = ' + json.dumps(form_key) + ';')
         source = source.replace(f"mod {name};", f"mod {name} {{\n{body}\n}}")
     source = source.replace("use horizon_server_browser::{\n    self as core,", "use self::core::{")
     source = source.replace("horizon_server_browser::", "crate::server_browser::core::")
@@ -111,6 +105,8 @@ def assemble():
     }
 '''
     catalog = items(read("mods/community/server-browser/src/catalog.rs"))
+    if re.search(r'"(?:cracked|offline-mode)"', catalog, flags=re.I):
+        raise ValueError("Remove offline-access listings from the bundled catalog")
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     notice = "// Server Atlas — native mod by shuab. SPDX-License-Identifier: MIT\n"
     notice += "\n".join("// " + line for line in license_text.splitlines()) + "\n"
@@ -195,7 +191,7 @@ visibility = "pub"
     mods.push(crate::game::native_hooks::NativeMod {
         id: "server_browser".into(), title: "Server Atlas 2.2.0".into(),
         description: "Native server browser: search, filters, favorites, LAN and public discovery.".into(), keys: Vec::new(),
-    });''')
+    });'''.replace("2.2.0", VERSION))
     hook("frame", "horizon_client::game::native_hooks::Game<'_>::native_frame", game, '''if !game.native_window() { return; }
     if let Some(title) = &mut game.title {
         let on=!game.settings.mods.disabled.contains("server_browser");

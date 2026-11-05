@@ -84,7 +84,10 @@ def main():
             if key in seen:
                 continue
             seen.add(key)
-            added.append({'name':clean(server.get('name',server['host']),256),'address':key,'tags':[clean(t,64) for t in server.get('tags',[])[:32] if isinstance(t,str)]})
+            tags = [clean(t,64) for t in server.get('tags',[])[:32] if isinstance(t,str)]
+            if any(tag.strip().casefold() in {"cracked", "offline-mode"} for tag in tags):
+                continue
+            added.append({'name':clean(server.get('name',server['host']),256),'address':key,'tags':tags})
         report={'source':'https://minecraftserve.rs/api-docs','checked_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'requests':pages,'baseline':len(baseline),'new_unique':len(added),'complete':page==total_pages,'servers':added}
         (args.out/'snapshot.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf8')
         print(f'Public API page {page}/{total_pages}: {len(added)} additional unique public Java addresses',flush=True)

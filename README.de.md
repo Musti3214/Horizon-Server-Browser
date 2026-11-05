@@ -1,6 +1,6 @@
 # Server Atlas
 
-Fabric und Forge sind als öffentliche Beta 2.2.0 für Minecraft 26.3 / Java 25 verfügbar. Jeweils die passende JAR in den mods-Ordner legen: [Fabric](downloads/server-browser-fabric-2.2.0+mc26.3.jar) · [Forge](downloads/server-browser-forge-2.2.0+mc26.3.jar). Fabric Loader ab 0.20.1 bzw. Forge ab 66.1.5. Die Horizon-Version 2.2.0 bleibt separat verfügbar. [Anleitung und Prüfgrenzen](java/README.md).
+Fabric und Forge sind als öffentliche Beta 2.2.0 für Minecraft 26.3 / Java 25 verfügbar. Jeweils die passende JAR in den mods-Ordner legen: [Fabric](downloads/server-browser-fabric-2.2.0+mc26.3.jar) · [Forge](downloads/server-browser-forge-2.2.0+mc26.3.jar). Fabric Loader ab 0.20.1 bzw. Forge ab 66.1.5. Die Horizon-Version 2.2.1 bleibt separat verfügbar. [Anleitung und Prüfgrenzen](java/README.md).
 
 
 [Projekt auf Ko-fi unterstützen](https://ko-fi.com/foryou41) ·
@@ -21,7 +21,7 @@ Serververzeichnis, Filtern und einer persönlichen Serverliste. Entwickelt für 
 ## Funktionen
 
 - Öffentliche Java-Server von **minecraftserve.rs und Modrinth** entdecken.
-- **2.835 eindeutige Serveradressen** im eingebetteten Katalog, Stand 03.11.2026.
+- Online-Entdecken startet nach Zustimmung. Status-Pings bleiben auf sichtbare und benachbarte Zeilen begrenzt.
 - Namen, Adressen, MOTD, Tags und Notizen durchsuchen.
 - Nach Status, Version, Spielern, Ping, Sprache, Region und Gruppe filtern.
 - Favoriten, Gruppen, Notizen und eigene Filterprofile lokal verwalten.
@@ -31,9 +31,9 @@ Serververzeichnis, Filtern und einer persönlichen Serverliste. Entwickelt für 
 
 ## Installieren
 
-1. `server-browser-2.2.0.hnmod` herunterladen und eine eigene Horizon-Instanz wählen.
+1. `server-browser-2.2.1.hnmod` herunterladen und eine eigene Horizon-Instanz wählen.
 2. Datei in den zugehörigen Ordner `horizon-native-mods` legen.
-3. In der Mods-Seite **server_browser 2.2.0 einschalten**, **Bauen** wählen und die
+3. In der Mods-Seite **server_browser 2.2.1 einschalten**, **Bauen** wählen und die
    Vertrauensentscheidung für nativen Code selbst bestätigen.
 4. Nach Abschluss die gebaute Instanz starten und **Mehrspieler** öffnen.
 
@@ -43,12 +43,11 @@ verschiedene Horizon-Quellstände benötigen. [Anleitung](docs/INSTALLATION.md).
 
 ## Stand
 
-Horizon 2.2.0 für Minecraft Java 26.3 ist verfügbar und unter Windows x64 getestet.
+Horizon 2.2.1 für Minecraft Java 26.3 ist verfügbar und unter Windows x64 getestet.
 Fabric und Forge 2.2.0 sind als öffentliche Beta-JARs für Minecraft 26.3 / Java 25 verfügbar. [Java-Anleitung und Prüfbericht](java/README.md).
 Feedback- und Servervorschlagsentwürfe bleiben lokal; automatischer Mailversand
 ist noch nicht konfiguriert. [Datenschutz](docs/PRIVACY.md).
 
 Alle Bilder sind unveränderte Aufnahmen der gebauten Mod. Eigene Server und
 Notizen sind Beispieldaten; die Entdecken-Aufnahme zeigt einen echten Online-Test.
-44 Rust-Tests, nativer Build und isolierte Spieltests bestanden.
-[Prüfbericht](docs/VALIDATION.md) · [Quellen](docs/SERVER-SOURCES.md) · [MIT-Lizenz](LICENSE).
+[Prüfbericht für Horizon 2.2.1](mod/VALIDATION-2.2.1.md) · [Quellen](docs/SERVER-SOURCES.md) · [MIT-Lizenz](mod/LICENSE).

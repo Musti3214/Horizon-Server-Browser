@@ -160,11 +160,11 @@
   ],
   "platform_intro": "Download Server Atlas for Horizon, Fabric or Forge. Minecraft Java 26.3, public server discovery, filters and favorites. Free and open source.",
   "platform_text": [
-    "Native Rust 2.2.0 for Horizon. Includes source; a native launcher build is required.",
+    "Native Rust 2.2.1 for Horizon. Includes source; a native launcher build is required.",
     "Fabric beta 2.2.0 for Minecraft 26.3. Java 25 and Fabric Loader 0.20.1+. Required Fabric API modules are bundled.",
     "Forge beta 2.2.0 for Minecraft 26.3. Java 25 and Minecraft Forge 66.1.5+. Client-only JAR."
   ],
-  "available": "Available · 2.2.0",
+  "available": "Available · 2.2.1",
   "planned": "Planned",
   "development": "Development status",
   "download_details": "View download",
@@ -177,7 +177,7 @@
     ],
     [
       "Which platforms are supported?",
-      "Horizon 2.2.0 is available as a native .hnmod, tested on Windows x64. Fabric and Forge 2.2.0 are available as public beta JARs for Minecraft Java 26.3 / Java 25. Choose the download for your loader."
+      "Horizon 2.2.1 is available as a native .hnmod, tested on Windows x64. Fabric and Forge 2.2.0 are available as public beta JARs for Minecraft Java 26.3 / Java 25. Choose the download for your loader."
     ],
     [
       "Do I rebuild at every launch?",
@@ -198,7 +198,7 @@
     "And a new adventure."
   ],
   "closing_text": "Discover new worlds. Keep your favorite servers. Start your next adventure with Server Atlas.",
-  "closing_note": "Free · Horizon 2.2.0 · Fabric & Forge 2.2.0 beta",
+  "closing_note": "Free · Horizon 2.2.1 · Fabric & Forge 2.2.0 beta",
   "download_eyebrow": "One download. New possibilities.",
   "download_h1": [
     "Your server list.",
@@ -229,7 +229,7 @@
   "guide_steps": [
     [
       "Download the mod",
-      "Get server-browser-2.2.0.hnmod. It contains the native Rust implementation for Horizon, rather than a Fabric or Forge .jar."
+      "Get server-browser-2.2.1.hnmod. It contains the native Rust implementation for Horizon, rather than a Fabric or Forge .jar."
     ],
     [
       "Choose the correct instance",
@@ -237,7 +237,7 @@
     ],
     [
       "Enable and build the mod",
-      "On the launcher's Mods page, switch server_browser 2.2.0 on. Choose the ordinary Build action for the tested revision and review the mod list. The player decides whether to accept “I trust these mods: build”."
+      "On the launcher's Mods page, switch server_browser 2.2.1 on. Choose the ordinary Build action for the tested revision and review the mod list. The player decides whether to accept “I trust these mods: build”."
     ],
     [
       "Launch the completed build",
@@ -268,7 +268,7 @@
   "project_sections": [
     [
       "The project",
-      "An independent community project developed for shuab. The native Horizon 2.2.0 package is MIT licensed, includes its Rust sources and targets Minecraft Java 26.3. Tested on Windows x64. No separate host patch or companion program is required."
+      "An independent community project developed for shuab. The native Horizon 2.2.1 package is MIT licensed, includes its Rust sources and targets Minecraft Java 26.3. Tested on Windows x64. No separate host patch or companion program is required."
     ],
     [
       "Release and development",

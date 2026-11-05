@@ -7,7 +7,7 @@ A Minecraft Java server browser for **Horizon, Fabric and Forge**, with a famili
 <img src="docs/server-atlas-icon.png" alt="Server Atlas compass logo" width="128" height="128">
 
 [Website & screenshots](https://musti3214.github.io/Horizon-Server-Browser/) ·
-[Download 2.2.0](https://musti3214.github.io/Horizon-Server-Browser/downloads/server-browser-2.2.0.hnmod) ·
+[Download Horizon 2.2.1](https://musti3214.github.io/Horizon-Server-Browser/downloads/server-browser-2.2.1.hnmod) ·
 [Installation](docs/INSTALLATION.md) · [Deutsch](README.de.md)
 
 Website languages: [English](https://musti3214.github.io/Horizon-Server-Browser/),
@@ -23,7 +23,7 @@ If you would like to support development: [Support this project on Ko-fi](https:
 ## One browser. Your next adventure.
 
 - **Discover public Java servers** from minecraftserve.rs and Modrinth.
-  The bundled catalog contains **2,835 unique addresses**, researched on November 3, 2026.
+  Online discovery starts after you accept the privacy screen. Status probes stay within the visible rows and a small margin.
 - **Search and filter** names, addresses, MOTDs, tags and personal notes. Combine
   status, version, player count, ping, language, region and group filters.
 - **Keep your own list** with favorites, notes, groups, custom ordering and reusable
@@ -37,13 +37,13 @@ If you would like to support development: [Support this project on Ko-fi](https:
 
 | Platform | Status | Download |
 | --- | --- | --- |
-| Horizon, Minecraft Java 26.3 | **2.2.0 · native Rust mod**; tested on Windows x64 | `.hnmod` |
+| Horizon, Minecraft Java 26.3 | **2.2.1 · native Rust mod**; tested on Windows x64 | `.hnmod` |
 | Fabric · Minecraft 26.3 | **2.2.0 public beta** · Java 25 · Loader 0.20.1+ | [Fabric JAR](downloads/server-browser-fabric-2.2.0+mc26.3.jar) |
 | Forge · Minecraft 26.3 | **2.2.0 public beta** · Java 25 · Forge 66.1.5+ | [Forge JAR](downloads/server-browser-forge-2.2.0+mc26.3.jar) |
 
 The Horizon package uses the official native-mod build process. It includes its
 Rust sources and requires no companion program or separately installed host patch.
-It is pinned to the exact Horizon commit documented in [validation](docs/VALIDATION.md).
+It is pinned to the exact Horizon commit documented in [validation](mod/VALIDATION-2.2.1.md).
 
 ## A closer look
 
@@ -76,9 +76,9 @@ Minecraft **26.3 / Java 25**: install Fabric Loader **0.20.1+** or Minecraft For
 
 ## Install in Horizon
 
-1. Download `server-browser-2.2.0.hnmod` and select a dedicated Horizon instance.
+1. Download `server-browser-2.2.1.hnmod` and select a dedicated Horizon instance.
 2. Put the file in that instance's `horizon-native-mods` folder.
-3. On the launcher's Mods page, enable **server_browser 2.2.0**. Choose **Build**
+3. On the launcher's Mods page, enable **server_browser 2.2.1**. Choose **Build**
    for the package's tested revision and review the native-code trust notice.
 4. After the build finishes, launch that instance and open **Multiplayer**.
 
@@ -92,8 +92,7 @@ Your saved servers, favorites and notes stay local. Public-directory requests go
 only to the named sources; normal status pings contact the servers being checked.
 The mod uses Horizon's existing login and connection implementation.
 
-Feedback and server-proposal drafts can be saved locally. **Automatic email
-delivery is not configured in 2.2.0.** Fabric and Forge 2.2.0 are now available as public betas.
+Feedback and server-proposal drafts can be saved locally. The native toolbar’s Ko-fi button opens the project’s support page in your browser. Fabric and Forge 2.2.0 are now available as public betas.
 The web catalog is a dated address list and does not claim live player counts.
 Read [privacy](docs/PRIVACY.md) and [server sources](docs/SERVER-SOURCES.md).
 

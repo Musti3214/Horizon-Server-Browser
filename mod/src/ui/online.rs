@@ -46,6 +46,9 @@ pub(super) struct Directory {
     pub(super) reply: Arc<Mutex<Option<std::result::Result<Page, String>>>>,
 }
 impl Directory {
+    pub fn refresh(&mut self) {
+        self.refresh_at = Some(Instant::now());
+    }
     pub fn needs_first_page(&self, now: Instant) -> bool {
         !self.loading()
             && self.retry_at.is_none_or(|at| now >= at)
@@ -260,7 +263,8 @@ pub(super) fn merge_directory(
         let mut added = 0;
         let remote_count = page.servers.len();
         for (index, server) in page.servers.drain(..).chain(curated).enumerate() {
-            if let Ok(key) = core::address::key(&server.address)
+            if !server.metadata.tags.iter().any(|tag| query::offline_access_tag(tag))
+                && let Ok(key) = core::address::key(&server.address)
                 && seen.insert(key)
             {
                 if index >= remote_count {
@@ -272,6 +276,9 @@ pub(super) fn merge_directory(
         page.servers = servers;
         page.total = (page.total + added).max(page.servers.len() as u64);
     }
+    page.servers.retain(|server| {
+        !server.metadata.tags.iter().any(|tag| query::offline_access_tag(tag))
+    });
     Ok(page)
 }
 

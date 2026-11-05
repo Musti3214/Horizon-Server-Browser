@@ -1,7 +1,7 @@
 // Server Atlas — native mod by shuab. SPDX-License-Identifier: MIT
 // MIT License
 //
-// Copyright (c) 2026 Ludovic Marie and the Horizon contributors
+// Copyright (c) 2026 shuab
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -975,6 +975,9 @@ pub mod core {
             /// Zero disables automatic refresh.
             pub refresh_seconds: u64,
             pub concurrent_pings: usize,
+            // Older releases persisted the default-on switch under a different key.
+            // Only an explicit confirmation in this release enables the directory.
+            #[serde(rename = "online_directory_consent")]
             pub online_directory: bool,
             pub show_offline: bool,
             pub reduced_motion: bool,
@@ -989,7 +992,7 @@ pub mod core {
                     classic_menu: false,
                     refresh_seconds: 60,
                     concurrent_pings: 8,
-                    online_directory: true,
+                    online_directory: false,
                     show_offline: true,
                     reduced_motion: false,
                     default_tab: Tab::Saved,
@@ -1504,7 +1507,7 @@ pub mod core {
             #[test]
             fn versioned_fixture_defaults_unknown_fields_and_future_schema() {
                 let dir = scratch();
-                assert!(load_state(&dir).unwrap().settings.online_directory);
+                assert!(!load_state(&dir).unwrap().settings.online_directory);
                 let path = state_path(&dir);
                 fs::write(
                     &path,
@@ -1557,9 +1560,7 @@ pub mod core {
     }
     pub mod query {
         // Pure AND filtering. Unknown numeric/status fields never satisfy a constraint.
-        use crate::server_browser::core::model::{
-            AuthMode, Health, Server, Sort, Status, Tab, View,
-        };
+        use crate::server_browser::core::model::{Health, Server, Sort, Status, Tab, View};
         use serde::{Deserialize, Serialize};
         use std::{cmp::Ordering, collections::HashMap};
 
@@ -1588,9 +1589,11 @@ pub mod core {
             pub region: String,
             pub group: String,
             pub favorites: bool,
-            pub auth: Option<AuthMode>,
-            /// Conservative offline-mode-only filter, independent of account handling.
-            pub joinable: bool,
+        }
+
+        pub fn offline_access_tag(tag: &str) -> bool {
+            let tag = tag.trim();
+            tag.eq_ignore_ascii_case("cracked") || tag.eq_ignore_ascii_case("offline-mode")
         }
 
         pub fn strip_formatting(s: &str) -> String {
@@ -1611,8 +1614,6 @@ pub mod core {
             let f = &view.filters;
             if (view.tab == Tab::Favorites || f.favorites) && !m.favorite
                 || view.tab == Tab::Recent && m.last_played == 0
-                || f.joinable && m.auth != AuthMode::Offline
-                || f.auth.is_some_and(|auth| auth != m.auth)
                 || !f.group.is_empty() && !f.group.eq_ignore_ascii_case(&m.group)
                 || !f.language.is_empty() && !f.language.eq_ignore_ascii_case(&m.language)
                 || !f.region.is_empty() && !f.region.eq_ignore_ascii_case(&m.region)
@@ -1774,7 +1775,6 @@ pub mod core {
                 };
                 server.metadata.tags = vec!["Survival".into(), "EU".into()];
                 server.metadata.notes = "friends welcome".into();
-                server.metadata.auth = AuthMode::Offline;
                 server.metadata.favorite = true;
                 server.metadata.language = "de".into();
                 server.metadata.region = "DE".into();
@@ -1816,8 +1816,8 @@ pub mod core {
                 assert_eq!(strip_formatting("§aHi §lthere§r!"), "Hi there!");
             }
             #[test]
-            fn every_filter_combines_and_unknown_is_not_joinable() {
-                let (mut s, p) = fixture();
+            fn filters_combine_and_unknown_status_does_not_match() {
+                let (s, p) = fixture();
                 let mut v = View {
                     filters: Filters {
                         online: Some(true),
@@ -1832,16 +1832,12 @@ pub mod core {
                         language: "de".into(),
                         region: "DE".into(),
                         favorites: true,
-                        joinable: true,
                         ..Filters::default()
                     },
                     ..View::default()
                 };
                 assert!(matches(&s, Some(&p), &v));
                 assert!(!matches(&s, None, &v));
-                s.metadata.auth = AuthMode::Unknown;
-                assert!(!matches(&s, Some(&p), &v));
-                s.metadata.auth = AuthMode::Offline;
                 v.filters.min_players = Some(6);
                 assert!(!matches(&s, Some(&p), &v));
                 v.filters.min_players = None;
@@ -1940,10 +1936,6 @@ pub mod core {
                     },
                     Filters {
                         group: "other".into(),
-                        ..Filters::default()
-                    },
-                    Filters {
-                        auth: Some(AuthMode::Online),
                         ..Filters::default()
                     },
                 ];
@@ -2179,7 +2171,10 @@ pub mod core {
             pub fn new(concurrency: usize) -> std::io::Result<Self> {
                 Self::with_probe(concurrency, Arc::new(ping))
             }
-            fn with_probe(concurrency: usize, probe: Arc<Probe>) -> std::io::Result<Self> {
+            pub(crate) fn with_probe(
+                concurrency: usize,
+                probe: Arc<Probe>,
+            ) -> std::io::Result<Self> {
                 let shared = Arc::new(Shared::default());
                 let service = Self {
                     lease: Arc::new(Lease {
@@ -2941,8 +2936,6 @@ mod draw {
                 (135, !f.language.is_empty(), "language"),
                 (136, !f.region.is_empty(), "region"),
                 (137, f.favorites, "favorites"),
-                (138, f.auth.is_some(), "auth"),
-                (139, f.joinable, "joinable"),
                 (140, !f.group.is_empty(), "group"),
             ]
             .into_iter()
@@ -3301,8 +3294,6 @@ mod draw {
                             label_value("not_empty", on(f.not_empty)),
                             label_value("not_full", on(f.not_full)),
                             label_value("favorites", on(f.favorites)),
-                            label_value("joinable", on(f.joinable)),
-                            label_value("auth", f.auth.map(auth_name).unwrap_or_else(|| tr("any"))),
                         ];
                         for (i, value) in values.into_iter().enumerate() {
                             b(
@@ -3435,16 +3426,7 @@ mod draw {
                         };
                         b(id, label, x + i as f32 * (cat_w + 4.0), 45.0, cat_w, true);
                     }
-                    let half_w = (fw - 4.0) / 2.0;
-                    b(96, tr("feedback_save"), x, h - 55.0, half_w, true);
-                    b(
-                        97,
-                        tr("feedback_send"),
-                        x + half_w + 4.0,
-                        h - 55.0,
-                        half_w,
-                        self.runtime.borrow().feedback.status != feedback::Status::Sending,
-                    );
+                    b(96, tr("feedback_save"), x, h - 55.0, fw, true);
                 }
                 _ => {}
             }
@@ -4016,17 +3998,10 @@ mod draw {
                 if let Modal::Feedback { text: content, .. } = &self.modal {
                     let counter = format!("{}/500", content.chars().count());
                     text(batch, atlas, &counter, w - 80.0, 10.0, 68.0, MUTED);
-                    let status = if r.feedback.status == feedback::Status::Idle
-                        && !feedback::Sender::configured()
-                    {
-                        feedback::Status::NotConfigured
-                    } else {
-                        r.feedback.status
-                    };
                     self.paragraph(
                         batch,
                         atlas,
-                        &tr(status.key()),
+                        &tr("feedback_local"),
                         [20.0, 108.0, w - 40.0, (h - 180.0).max(24.0)],
                         MUTED,
                     );
@@ -4212,7 +4187,6 @@ mod draw {
                 s.metadata.tags.join(", "),
             )));
             lines.push(Text::literal(label_value("notes", &s.metadata.notes)));
-            lines.push(Text::literal(tr("auth_note")));
             let wrapped = lines
                 .iter()
                 .flat_map(|line| atlas.font.split(line, w - 27.0))
@@ -4295,12 +4269,7 @@ mod draw {
                 let value = if cursor.0 > left + width - 120.0 && cursor.0 < left + width - 32.0 {
                     status.map(|s| s.samples.join("\n")).unwrap_or_default()
                 } else {
-                    format!(
-                        "{}\n{}\n{}",
-                        health(status),
-                        auth_name(s.metadata.auth),
-                        tr("auth_note")
-                    )
+                    health(status)
                 };
                 if !value.is_empty() {
                     let max_lines = ((batch.height - 20.0) / 10.0).floor().max(1.0) as usize;
@@ -4608,14 +4577,6 @@ mod forms {
                         73 => f.not_empty = !f.not_empty,
                         74 => f.not_full = !f.not_full,
                         75 => f.favorites = !f.favorites,
-                        76 => f.joinable = !f.joinable,
-                        77 => {
-                            f.auth = match f.auth {
-                                None => Some(AuthMode::Offline),
-                                Some(AuthMode::Offline) => Some(AuthMode::Online),
-                                _ => None,
-                            }
-                        }
                         50 => {
                             let number = |i: usize| {
                                 if self.fields[i].trim().is_empty() {
@@ -4676,7 +4637,11 @@ mod forms {
                                 _ => 0,
                             }
                         }
-                        84 => s.online_directory = !s.online_directory,
+                        84 if !s.online_directory => {
+                            self.show(Modal::Consent);
+                            return Outcome::None;
+                        }
+                        84 => s.online_directory = false,
                         85 => {
                             *s = core::model::Settings::default();
                             self.state.view = View::default();
@@ -4734,7 +4699,7 @@ mod forms {
                 Modal::Consent if id == 50 => {
                     self.state.settings.online_directory = true;
                     self.save_metadata();
-                    self.show(Modal::Settings);
+                    self.main();
                 }
                 Modal::Presets(name) => {
                     if id == 50 {
@@ -4827,7 +4792,7 @@ mod forms {
                         };
                         self.changed();
                     }
-                    50 | 96 | 97 => {
+                    96 => {
                         let trimmed = text.trim();
                         if trimmed.is_empty() {
                             self.error = Some(tr("feedback_empty"));
@@ -4864,14 +4829,6 @@ mod forms {
                         })();
                         if saved.is_err() {
                             self.error = Some(tr("feedback_draft_failed"));
-                            return Outcome::None;
-                        }
-                        if id != 96 {
-                            self.runtime
-                                .get_mut()
-                                .feedback
-                                .send(&self.home, category, trimmed);
-                            self.error = None;
                             return Outcome::None;
                         }
                         self.notice = Some((
@@ -4916,268 +4873,6 @@ mod forms {
             ]
             .iter()
             .any(|name| resolve(&self.home.join(name)).is_some_and(|reserved| reserved == target))
-        }
-    }
-}
-mod feedback {
-    // Only an explicit Send submits the message. No saved servers, accounts,
-    // search text or diagnostics are attached. The form key is public and grants
-    // submission access only; never embed a mail password or management token.
-    use super::*;
-    use std::{
-        io::Read,
-        sync::{
-            Arc, Mutex,
-            atomic::{AtomicBool, Ordering},
-        },
-    };
-
-    const FORM_KEY: &str = "";
-    const ENDPOINT: &str = "https://api.staticforms.dev/submit";
-    static BUSY: AtomicBool = AtomicBool::new(false);
-    type Reply = Arc<Mutex<Option<Result<(), Status>>>>;
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub(super) enum Status {
-        #[default]
-        Idle,
-        Sending,
-        Accepted,
-        Failed,
-        Limited,
-        NotConfigured,
-    }
-    impl Status {
-        pub fn key(self) -> &'static str {
-            match self {
-                Self::Idle => "feedback_privacy",
-                Self::Sending => "feedback_sending",
-                Self::Accepted => "feedback_accepted",
-                Self::Failed => "feedback_failed",
-                Self::Limited => "feedback_limited",
-                Self::NotConfigured => "feedback_not_configured",
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, Default)]
-    pub(super) struct Sender {
-        pub status: Status,
-        reply: Reply,
-        draft: Option<(usize, String)>,
-    }
-    impl Sender {
-        pub fn configured() -> bool {
-            !FORM_KEY.is_empty()
-        }
-        pub fn edited(&mut self, category: usize, text: &str) {
-            let text = text.trim();
-            if self.status == Status::Sending {
-                return;
-            }
-            if self
-                .draft
-                .as_ref()
-                .is_none_or(|(c, t)| *c != category || t != text)
-            {
-                self.draft = Some((category, text.into()));
-                self.status = Status::Idle;
-            }
-        }
-        pub fn poll(&mut self) {
-            if let Some(result) = self.reply.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                self.status = result.err().unwrap_or(Status::Accepted);
-            }
-        }
-        pub fn send(&mut self, home: &Path, category: usize, text: &str) {
-            self.start(
-                home,
-                category,
-                text,
-                FORM_KEY,
-                core::unix_seconds(),
-                transmit,
-            );
-        }
-        fn start<F>(
-            &mut self,
-            home: &Path,
-            category: usize,
-            text: &str,
-            key: &str,
-            now: u64,
-            transport: F,
-        ) where
-            F: FnOnce(Vec<u8>) -> Result<(), Status> + Send + 'static,
-        {
-            self.poll();
-            if self.status == Status::Sending {
-                return;
-            }
-            if key.is_empty() {
-                self.status = Status::NotConfigured;
-                return;
-            }
-            let Ok(body) = payload(key, category, text) else {
-                self.status = Status::Failed;
-                return;
-            };
-            let rate = home.join("feedback-last-attempt.json");
-            if persistence::read_bounded(&rate)
-                .ok()
-                .and_then(|bytes| serde_json::from_slice::<u64>(&bytes).ok())
-                .is_some_and(|last| now < last.saturating_add(60))
-            {
-                self.status = Status::Limited;
-                return;
-            }
-            if BUSY
-                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_err()
-            {
-                self.status = Status::Limited;
-                return;
-            }
-            struct Job;
-            impl Drop for Job {
-                fn drop(&mut self) {
-                    BUSY.store(false, Ordering::Release);
-                }
-            }
-            let job = Job;
-            if persistence::atomic_write(&rate, now.to_string().as_bytes()).is_err() {
-                self.status = Status::Failed;
-                return;
-            }
-            self.status = Status::Sending;
-            self.draft = Some((category, text.into()));
-            let reply = self.reply.clone();
-            if std::thread::Builder::new()
-                .name("browser-feedback".into())
-                .spawn(move || {
-                    let _job = job;
-                    let result = transport(body);
-                    *reply.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
-                })
-                .is_err()
-            {
-                self.status = Status::Failed;
-            }
-        }
-    }
-
-    fn payload(key: &str, category: usize, text: &str) -> Result<Vec<u8>, Status> {
-        let text = text.trim();
-        if text.is_empty() || text.chars().count() > 500 || category > 3 {
-            return Err(Status::Failed);
-        }
-        let category = ["Idea", "Bug", "Public server suggestion", "General"][category];
-        serde_json::to_vec(&serde_json::json!({
-            "apiKey":key,
-            "name":"Server Atlas",
-            "category":category,
-            "mod_version":"2.2.0",
-            "message":text,
-            "honeypot":""
-        }))
-        .map_err(|_| Status::Failed)
-    }
-    fn acknowledgement(bytes: &[u8]) -> Result<(), Status> {
-        if bytes.len() > 16_384 {
-            return Err(Status::Failed);
-        }
-        let json: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| Status::Failed)?;
-        if json["success"].as_bool() == Some(true) {
-            Ok(())
-        } else {
-            Err(Status::Failed)
-        }
-    }
-    fn transmit(body: Vec<u8>) -> Result<(), Status> {
-        let agent = ureq::AgentBuilder::new()
-            .redirects(0)
-            .timeout(Duration::from_secs(10))
-            .build();
-        let response = agent
-            .post(ENDPOINT)
-            .set("Content-Type", "application/json")
-            .set("Accept", "application/json")
-            .set("User-Agent", "Server-Atlas/2.2.0")
-            .send_bytes(&body)
-            .map_err(|e| {
-                if matches!(e, ureq::Error::Status(429, _)) {
-                    Status::Limited
-                } else {
-                    Status::Failed
-                }
-            })?;
-        if response.status() != 200 {
-            return Err(Status::Failed);
-        }
-        let mut bytes = Vec::new();
-        response
-            .into_reader()
-            .take(16_385)
-            .read_to_end(&mut bytes)
-            .map_err(|_| Status::Failed)?;
-        // An API acknowledgement means received by the service, not proof of
-        // delivery to Outlook. No automatic retries after an ambiguous timeout.
-        acknowledgement(&bytes)
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        #[test]
-        fn submission_contains_only_explicit_message_and_checks_real_acknowledgement() {
-            let value: serde_json::Value = serde_json::from_slice(
-                &payload("public-form-key", 2, "  mc.example.org | Survival  ").unwrap(),
-            )
-            .unwrap();
-            assert_eq!(value["message"], "mc.example.org | Survival");
-            assert_eq!(value["category"], "Public server suggestion");
-            assert_eq!(value.as_object().unwrap().len(), 6);
-            for field in [
-                "email",
-                "recipient",
-                "uuid",
-                "servers",
-                "diagnostics",
-                "search",
-            ] {
-                assert!(value.get(field).is_none());
-            }
-            assert!(payload("key", 0, "").is_err());
-            assert!(payload("key", 0, &"x".repeat(501)).is_err());
-            assert!(acknowledgement(br#"{"success":true}"#).is_ok());
-            for bytes in [
-                br#"{"success":false}"#.as_slice(),
-                br#"{"success":"true"}"#,
-                b"<html>OK</html>",
-            ] {
-                assert_eq!(acknowledgement(bytes), Err(Status::Failed));
-            }
-        }
-        #[test]
-        fn failure_keeps_a_persisted_cooldown_and_reopening_cannot_resend() {
-            let home = std::env::temp_dir().join(format!("browser-mail-{}", std::process::id()));
-            std::fs::create_dir_all(&home).unwrap();
-            let mut sender = Sender::default();
-            sender.start(&home, 0, "Test draft", "public-key", 100, |_| {
-                Err(Status::Failed)
-            });
-            let deadline = Instant::now() + Duration::from_secs(3);
-            while sender.status == Status::Sending && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-                sender.poll();
-            }
-            assert_eq!(sender.status, Status::Failed);
-            let mut reopened = Sender::default();
-            reopened.start(&home, 0, "Test draft", "public-key", 101, |_| {
-                panic!("cooldown must prevent transport")
-            });
-            assert_eq!(reopened.status, Status::Limited);
-            std::fs::remove_dir_all(home).unwrap();
         }
     }
 }
@@ -5230,6 +4925,9 @@ mod online {
         pub(super) reply: Arc<Mutex<Option<std::result::Result<Page, String>>>>,
     }
     impl Directory {
+        pub fn refresh(&mut self) {
+            self.refresh_at = Some(Instant::now());
+        }
         pub fn needs_first_page(&self, now: Instant) -> bool {
             !self.loading()
                 && self.retry_at.is_none_or(|at| now >= at)
@@ -5444,7 +5142,12 @@ mod online {
             let mut added = 0;
             let remote_count = page.servers.len();
             for (index, server) in page.servers.drain(..).chain(curated).enumerate() {
-                if let Ok(key) = core::address::key(&server.address)
+                if !server
+                    .metadata
+                    .tags
+                    .iter()
+                    .any(|tag| query::offline_access_tag(tag))
+                    && let Ok(key) = core::address::key(&server.address)
                     && seen.insert(key)
                 {
                     if index >= remote_count {
@@ -5456,6 +5159,13 @@ mod online {
             page.servers = servers;
             page.total = (page.total + added).max(page.servers.len() as u64);
         }
+        page.servers.retain(|server| {
+            !server
+                .metadata
+                .tags
+                .iter()
+                .any(|tag| query::offline_access_tag(tag))
+        });
         Ok(page)
     }
 
@@ -5923,6 +5633,102 @@ mod tests {
     }
 
     #[test]
+    fn discover_probes_only_the_viewport_on_load_scroll_and_auto_refresh() {
+        let (mut b, home) = browser();
+        b.state.settings.online_directory = true;
+        b.state.settings.reduced_motion = true;
+        b.state.settings.refresh_seconds = 60;
+        b.state.view.tab = Tab::Discover;
+        let (sent, received) = std::sync::mpsc::channel();
+        {
+            let r = b.runtime.get_mut();
+            r.service = PingService::with_probe(
+                1,
+                std::sync::Arc::new(move |address, _| {
+                    sent.send(address.to_owned()).unwrap();
+                    Ok(Status {
+                        health: Health::Online,
+                        ..Status::default()
+                    })
+                }),
+            )
+            .unwrap();
+            r.directory.last_filter = Some((String::new(), String::new()));
+            *r.directory.reply.lock().unwrap() = Some(Ok(core::directory::Page {
+                servers: (0..2500)
+                    .map(|i| Server {
+                        name: format!("Server {i}"),
+                        address: format!("s{i}.test:25565"),
+                        ..Server::default()
+                    })
+                    .collect(),
+                page: 1,
+                pages: 1,
+                total: 2500,
+                ..Default::default()
+            }));
+        }
+        let check_window = |first: usize, count: usize| {
+            let start = first.saturating_sub(2);
+            let end = first + count + 2;
+            assert!(end - start < 30);
+            for i in start..end {
+                assert_eq!(
+                    received.recv_timeout(Duration::from_secs(5)).unwrap(),
+                    format!("s{i}.test:25565")
+                );
+            }
+            assert!(received.recv_timeout(Duration::from_millis(40)).is_err());
+        };
+        b.sync(&mut b.runtime.borrow_mut());
+        let (first, count) = b.runtime.get_mut().ping_window.unwrap();
+        assert_eq!(first, 0);
+        check_window(first, count);
+        b.sync(&mut b.runtime.borrow_mut());
+        assert!(received.try_recv().is_err());
+
+        b.runtime.get_mut().scroll.amount = 200.0 * draw::ROW;
+        b.sync(&mut b.runtime.borrow_mut());
+        assert_eq!(b.runtime.get_mut().ping_window, Some((200, count)));
+        check_window(200, count);
+
+        b.runtime.get_mut().refreshed = Instant::now() - Duration::from_secs(61);
+        b.sync(&mut b.runtime.borrow_mut());
+        check_window(200, count);
+        drop(b);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn discover_requires_new_consent_after_an_upgrade() {
+        let (mut b, home) = browser();
+        let migrated: State =
+            serde_json::from_str(r#"{"settings":{"online_directory":true}}"#).unwrap();
+        assert!(!migrated.settings.online_directory);
+        b.show(Modal::Settings);
+        b.activate(84);
+        assert!(matches!(b.modal, Modal::Consent));
+        assert!(!b.state.settings.online_directory);
+        b.activate(50);
+        assert!(
+            persistence::load_state(&home)
+                .unwrap()
+                .settings
+                .online_directory
+        );
+        b.show(Modal::Settings);
+        b.activate(84);
+        assert!(
+            !persistence::load_state(&home)
+                .unwrap()
+                .settings
+                .online_directory
+        );
+        drop(b);
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
     fn discover_infinite_scroll_and_curated_catalog() {
         let (mut b, home) = browser();
         b.state.settings.online_directory = true;
@@ -6163,7 +5969,6 @@ enum Modal {
 struct Runtime {
     service: PingService,
     directory: online::Directory,
-    feedback: feedback::Sender,
     statuses: HashMap<String, Status>,
     history: HashMap<String, VecDeque<u64>>,
     icons: RefCell<HashMap<String, (u64, Option<std::sync::Arc<Vec<u8>>>)>>,
@@ -6175,13 +5980,27 @@ struct Runtime {
     detail_scroll: Scroll,
     detail_height: f32,
     smooth: f32,
-    prioritized_row: usize,
+    ping_window: Option<(usize, usize)>,
+    refresh_requested: bool,
     frame: Instant,
     opened: Instant,
     refreshed: Instant,
     search_pending: (String, Instant),
     size: (f32, f32),
     lan_games: Vec<crate::lan::discovery::LanGame>,
+}
+
+fn viewport_addresses(r: &Runtime, first: usize, count: usize) -> Vec<String> {
+    const MARGIN: usize = 2;
+    let start = first.saturating_sub(MARGIN).min(r.visible.len());
+    let end = first
+        .saturating_add(count)
+        .saturating_add(MARGIN)
+        .min(r.visible.len());
+    r.visible[start..end]
+        .iter()
+        .map(|&index| r.source[index].address.clone())
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -6215,20 +6034,11 @@ impl Browser {
         let state = persistence::load_state(&home)?;
         let catalog = Catalog::load(&home, &state.metadata)?;
         let service = PingService::new(state.settings.concurrent_pings)?;
-        service.refresh(
-            catalog
-                .servers
-                .iter()
-                .chain(&state.recent)
-                .map(|s| s.address.clone()),
-            false,
-        );
         let now = Instant::now();
         let selection = state.view.selected.clone().into_iter().collect();
         let runtime = Runtime {
             service,
             directory: online::Directory::default(),
-            feedback: feedback::Sender::default(),
             statuses: HashMap::new(),
             history: HashMap::new(),
             icons: RefCell::default(),
@@ -6240,7 +6050,8 @@ impl Browser {
             detail_scroll: Scroll::default(),
             detail_height: 0.0,
             smooth: 0.0,
-            prioritized_row: usize::MAX,
+            ping_window: None,
+            refresh_requested: false,
             frame: now,
             opened: now,
             refreshed: now,
@@ -6375,14 +6186,12 @@ impl Browser {
         if matches!(self.modal, Modal::Edit { .. }) {
             return;
         }
-        if matches!(self.state.view.tab, Tab::Lan | Tab::Discover) {
+        if matches!(self.state.view.tab, Tab::Lan | Tab::Discover | Tab::Recent) {
             let r = self.runtime.get_mut();
             if self.state.view.tab == Tab::Discover {
-                r.directory.cancel();
+                r.directory.refresh();
             }
-            r.service
-                .refresh(r.source.iter().map(|s| s.address.clone()), true);
-            r.refreshed = Instant::now();
+            r.refresh_requested = true;
             return;
         }
         // Reload before a mutation if another launcher changed the file. Modern
@@ -6397,28 +6206,17 @@ impl Browser {
         }
         let r = self.runtime.get_mut();
         r.statuses.clear();
-        r.refreshed = Instant::now();
-        r.service.refresh(
-            self.catalog
-                .servers
-                .iter()
-                .chain(&self.state.recent)
-                .map(|s| s.address.clone()),
-            true,
-        );
+        r.refresh_requested = true;
         self.changed();
     }
     fn sync(&self, r: &mut Runtime) {
-        r.feedback.poll();
-        if let Modal::Feedback { category, text } = &self.modal {
-            r.feedback.edited(*category, text);
-        }
         let current_filter = (
             self.state
                 .view
                 .filters
                 .tags
                 .first()
+                .filter(|tag| !query::offline_access_tag(tag))
                 .cloned()
                 .unwrap_or_default(),
             if self.state.view.filters.version == query::Version::Specific {
@@ -6467,23 +6265,24 @@ impl Browser {
             }
             r.statuses.insert(address, status);
         }
-        if self.state.settings.refresh_seconds > 0
-            && r.refreshed.elapsed() >= Duration::from_secs(self.state.settings.refresh_seconds)
-        {
-            r.service
-                .refresh(r.source.iter().map(|s| s.address.clone()), true);
+        let force_refresh = r.refresh_requested
+            || self.state.settings.refresh_seconds > 0
+                && r.refreshed.elapsed()
+                    >= Duration::from_secs(self.state.settings.refresh_seconds);
+        if force_refresh {
             r.refreshed = Instant::now();
+            r.refresh_requested = false;
         }
         let games = if self.state.view.tab == Tab::Lan {
             self.lan.games()
         } else {
             Vec::new()
         };
-        if directory_changed
+        let source_changed = directory_changed
             || r.revision != self.revision
             || r.view.tab != self.state.view.tab
-            || games != r.lan_games
-        {
+            || games != r.lan_games;
+        if source_changed {
             r.source = match self.state.view.tab {
                 Tab::Lan => games
                     .iter()
@@ -6506,12 +6305,13 @@ impl Browser {
                             .clone()
                     })
                     .collect(),
-                Tab::Discover => r
+                Tab::Discover if self.state.settings.online_directory => r
                     .directory
                     .page
                     .as_ref()
                     .map(|p| p.servers.clone())
                     .unwrap_or_default(),
+                Tab::Discover => Vec::new(),
                 _ => self.catalog.servers.clone(),
             };
             let tab_changed = r.view.tab != self.state.view.tab;
@@ -6523,12 +6323,6 @@ impl Browser {
                         .entry(address.clone())
                         .or_insert_with(|| status.clone());
                 }
-                r.service
-                    .refresh(page.servers.iter().map(|s| s.address.clone()), false);
-            }
-            if games != r.lan_games {
-                r.service
-                    .refresh(r.source.iter().map(|s| s.address.clone()), false);
             }
             r.lan_games = games;
             r.revision = self.revision;
@@ -6541,7 +6335,8 @@ impl Browser {
         if r.search_pending.1.elapsed() < Duration::from_millis(60) {
             view.search.clone_from(&r.view.search);
         }
-        if view != r.view {
+        let view_changed = view != r.view;
+        if view_changed {
             dirty = true;
         }
         if dirty {
@@ -6566,18 +6361,36 @@ impl Browser {
             r.smooth + (r.scroll.amount - r.smooth) * (dt * 18.0).min(1.0)
         };
         let first = (r.smooth / draw::ROW).floor().max(0.0) as usize;
-        if dirty || first != r.prioritized_row {
-            let count = ((bottom - top) / draw::ROW).ceil().max(0.0) as usize + 1;
-            r.service.prioritize(
-                r.visible
-                    .iter()
-                    .skip(first)
-                    .take(count)
-                    .map(|&i| r.source[i].address.clone()),
-            );
-            r.prioritized_row = first;
-        }
         let count = ((bottom - top) / draw::ROW).ceil().max(0.0) as usize + 1;
+        let window = (first, count);
+        if matches!(self.state.view.tab, Tab::Saved | Tab::Favorites) {
+            if source_changed || force_refresh || r.ping_window.is_none() {
+                r.service.refresh(
+                    self.catalog.servers.iter().map(|s| s.address.clone()),
+                    force_refresh,
+                );
+            }
+            if source_changed || force_refresh || view_changed || r.ping_window != Some(window) {
+                r.service.prioritize(
+                    r.visible
+                        .iter()
+                        .skip(first)
+                        .take(count)
+                        .map(|&i| r.source[i].address.clone()),
+                );
+            }
+            r.ping_window = Some(window);
+        } else if !matches!(self.modal, Modal::Main) {
+            if r.ping_window.take().is_some() || source_changed {
+                r.service.refresh([], false);
+            }
+        } else if source_changed || view_changed || force_refresh || r.ping_window != Some(window) {
+            // Results can change sorting and filtering. A result alone must
+            // never schedule another window and walk the entire directory.
+            let addresses = viewport_addresses(r, first, count);
+            r.service.refresh(addresses, force_refresh);
+            r.ping_window = Some(window);
+        }
         if self.state.view.tab == Tab::Discover
             && self.state.settings.online_directory
             && r.directory.can_request_next()
@@ -6786,8 +6599,6 @@ impl Browser {
                         135 => f.language.clear(),
                         136 => f.region.clear(),
                         137 => f.favorites = false,
-                        138 => f.auth = None,
-                        139 => f.joinable = false,
                         140 => f.group.clear(),
                         _ => {}
                     }
@@ -6910,22 +6721,7 @@ impl Browser {
                 35 => {
                     if self.state.settings.online_directory {
                         let r = self.runtime.get_mut();
-                        r.directory.cancel();
-                        r.scroll = Scroll::default();
-                        let filters = &self.state.view.filters;
-                        r.directory.request(
-                            self.home.clone(),
-                            true,
-                            core::directory::Request {
-                                page: 1,
-                                tag: filters.tags.first().cloned().unwrap_or_default(),
-                                version: if filters.version == query::Version::Specific {
-                                    filters.specific_version.clone()
-                                } else {
-                                    String::new()
-                                },
-                            },
-                        );
+                        r.directory.refresh();
                     } else {
                         self.show(Modal::Consent);
                     }
@@ -7157,8 +6953,8 @@ impl Drop for Browser {
     }
 }
 
-const EN_US: &str = r###"{"horizon.browser.title": "Server Atlas", "horizon.browser.search": "Search name, address, MOTD, tags, notes…", "horizon.browser.result_count": "%s of %s servers", "horizon.browser.settings": "Settings", "horizon.browser.classic": "Classic", "horizon.browser.modern_style": "Minecraft", "horizon.browser.clear": "Clear", "horizon.browser.my_servers": "My Servers", "horizon.browser.favorites": "Favorites", "horizon.browser.recent": "Recent", "horizon.browser.lan": "LAN", "horizon.browser.discover": "Discover", "horizon.browser.filters": "Filters", "horizon.browser.presets": "Presets", "horizon.browser.files": "Files", "horizon.browser.sort": "Sort servers", "horizon.browser.custom": "Custom order", "horizon.browser.name": "Name", "horizon.browser.players": "Players", "horizon.browser.free_slots": "Free slots", "horizon.browser.ping": "Ping", "horizon.browser.version": "Version", "horizon.browser.last_played": "Last played", "horizon.browser.date_added": "Date added", "horizon.browser.favorites_first": "Favorites first", "horizon.browser.favorite": "Star", "horizon.browser.tag": "Tags", "horizon.browser.up": "↑", "horizon.browser.down": "↓", "horizon.browser.details": "Info", "horizon.browser.reset": "Reset", "horizon.browser.undo": "Undo", "horizon.browser.join": "Join", "horizon.browser.direct": "Direct connect", "horizon.browser.add": "Add server", "horizon.browser.edit": "Edit", "horizon.browser.remove": "Remove", "horizon.browser.refresh": "Refresh", "horizon.browser.back": "Back", "horizon.browser.address": "Address (host[:port] or [IPv6]:port)", "horizon.browser.tags": "Tags (comma separated)", "horizon.browser.notes": "Notes", "horizon.browser.group": "Group / folder", "horizon.browser.language": "Language", "horizon.browser.region": "Region", "horizon.browser.preset_name": "Preset name", "horizon.browser.file_path": "JSON or servers.dat file path", "horizon.browser.min_players": "Minimum players", "horizon.browser.max_players": "Maximum players", "horizon.browser.max_ping": "Maximum ping (ms)", "horizon.browser.specific_version": "Specific version", "horizon.browser.status_filters": "Status", "horizon.browser.value_filters": "Values", "horizon.browser.tag_filters": "Tags / region", "horizon.browser.status": "Status", "horizon.browser.any": "Any", "horizon.browser.online": "Online", "horizon.browser.offline": "Offline", "horizon.browser.compatible": "Compatible", "horizon.browser.incompatible": "Protocol differs", "horizon.browser.not_empty": "Not empty", "horizon.browser.not_full": "Not full", "horizon.browser.joinable": "Known offline mode only", "horizon.browser.auth": "Account check", "horizon.browser.auth_unknown": "Account mode unknown", "horizon.browser.auth_offline": "Offline mode", "horizon.browser.auth_online": "Online mode", "horizon.browser.auth_note": "Status pings do not reveal account mode. Signed-in Horizon supports online-mode servers; offline names need offline mode.", "horizon.browser.unknown": "Unknown", "horizon.browser.unknown_count": "?/?", "horizon.browser.pinging": "Pinging…", "horizon.browser.timeout": "Timed out", "horizon.browser.dns_error": "DNS error", "horizon.browser.malformed": "Invalid status reply", "horizon.browser.empty": "No saved servers yet. Choose Add server or Direct connect.", "horizon.browser.no_results": "No servers match. Reset filters to show all servers.", "horizon.browser.lan_empty": "Looking for LAN worlds. Open a world to LAN on the same network.", "horizon.browser.directory_disabled": "Online discovery is off. Enable it in Settings.", "horizon.browser.directory_ready": "Public servers load automatically. Use Refresh to try again.", "horizon.browser.confirm_remove": "Remove selected servers?", "horizon.browser.remove_note": "Remove the selected saved servers? You can undo for 30 seconds.", "horizon.browser.removed": "Servers removed. Undo is available for 30 seconds.", "horizon.browser.apply": "Apply", "horizon.browser.consent": "Enable online directory", "horizon.browser.privacy": "Online directory privacy", "horizon.browser.privacy_note": "Discover uses minecraftserve.rs and the public Modrinth API. The services see your IP address, requested page and public tag filters; minecraftserve.rs also receives public version filters. Saved servers, notes, player names and search text stay local. You can disable online discovery in Settings. Each source is cached for 5 minutes, with at most one request per source per minute. Loaded servers are contacted directly for status checks. Modrinth images and modpacks are not downloaded. Entries are saved only when you choose Add server.", "horizon.browser.packs_ask": "Packs: Ask", "horizon.browser.packs_on": "Packs: Enabled", "horizon.browser.packs_off": "Packs: Disabled", "horizon.browser.more": "More…", "horizon.browser.previous": "Previous", "horizon.browser.modern": "Use modern server browser", "horizon.browser.menu_style": "Menu style", "horizon.browser.concurrency": "Concurrent pings", "horizon.browser.auto_refresh": "Auto-refresh", "horizon.browser.online_directory": "Online directory", "horizon.browser.defaults": "Reset to defaults", "horizon.browser.reduced_motion": "Reduce motion", "horizon.browser.default_tab": "Default tab", "horizon.browser.default_sort": "Default sort", "horizon.browser.show_offline": "Show offline servers", "horizon.browser.on": "On", "horizon.browser.off": "Off", "horizon.browser.remove_preset": "Remove named preset", "horizon.browser.import": "Import", "horizon.browser.export_json": "Export JSON", "horizon.browser.export_nbt": "Export vanilla NBT", "horizon.browser.imported": "Servers imported", "horizon.browser.latency_history": "Latency history (local)", "horizon.browser.invalid_address": "Enter a name and a valid host[:port] or [IPv6]:port.", "horizon.browser.duplicate": "This address is already saved.", "horizon.browser.invalid_filter": "Enter positive whole numbers; minimum must not exceed maximum.", "horizon.browser.save_error": "Could not save", "horizon.browser.load_error": "Could not load", "horizon.browser.file_error": "File error", "horizon.browser.load_directory": "Load directory", "horizon.browser.next_page": "Next page", "horizon.browser.previous_page": "Previous page", "horizon.browser.directory_loading": "Loading directory…", "horizon.browser.directory_error": "Directory unavailable; saved servers still work.", "horizon.browser.directory_rate": "Please wait before requesting another page.", "horizon.browser.directory_source": "Online · minecraftserve.rs + Modrinth", "horizon.browser.directory_save": "Save selected", "horizon.browser.validation_ok": "Address valid. SRV is resolved when pinging or joining.", "horizon.browser.drag_hint": "Drag the left edge to reorder; Ctrl/Shift selects several.", "horizon.browser.offline_only_note": "Known offline-mode servers; unknown account modes are excluded.", "horizon.browser.name_required": "Enter a server name.", "horizon.browser.export_reserved": "Choose an export file outside the browser's own data files.", "horizon.browser.exported": "Export saved.", "horizon.browser.select_details": "Select a server to see its MOTD, players, notes and latency.", "horizon.browser.support": "☕ Ko-fi", "horizon.browser.support_project": "☕ Support project (Ko-fi)", "horizon.browser.dismiss": "×", "horizon.browser.feedback": "💬 Feedback", "horizon.browser.feedback_title": "Feedback & Suggestions", "horizon.browser.feedback_prompt": "Your message or bug report...", "horizon.browser.feedback_idea": "💡 Idea", "horizon.browser.feedback_bug": "🐛 Bug", "horizon.browser.feedback_general": "⭐ General", "horizon.browser.feedback_save": "💾 Save locally", "horizon.browser.feedback_kofi": "☕ Send on Ko-fi", "horizon.browser.feedback_saved": "Thank you! Your feedback has been saved.", "horizon.browser.feedback_copied": "Feedback copied & Ko-fi opened!", "horizon.browser.feedback_empty": "Please enter some text first.", "horizon.browser.feedback_server": "🌐 Submit Server", "horizon.browser.feedback_server_prompt": "Server address, name, tags & description:", "horizon.browser.feedback_server_saved": "Server suggestion saved locally. Not sent yet.", "horizon.browser.feedback_send": "Send feedback", "horizon.browser.feedback_privacy": "Send submits only this message and category to the mod author through Static Forms. My Servers stay local.", "horizon.browser.feedback_sending": "Submitting… Please wait.", "horizon.browser.feedback_accepted": "Accepted by the mail service. Email delivery is not yet confirmed.", "horizon.browser.feedback_failed": "Submission not confirmed. Your draft remains saved locally. Please try again later.", "horizon.browser.feedback_limited": "Please wait at least one minute. The mail service may also have reached its sending limit.", "horizon.browser.feedback_not_configured": "Automatic sending is not set up yet. You can save drafts locally.", "horizon.browser.feedback_draft_failed": "Could not save your draft locally. Nothing was sent.", "horizon.browser.cancel": "Cancel", "horizon.browser.directory_partial": "One server source is currently unavailable. Other entries remain usable."}"###;
-const DE_DE: &str = r###"{"horizon.browser.title": "Server Atlas", "horizon.browser.search": "Name, Adresse, MOTD, Tags, Notizen suchen…", "horizon.browser.result_count": "%s von %s Servern", "horizon.browser.settings": "Einstellungen", "horizon.browser.classic": "Klassisch", "horizon.browser.modern_style": "Minecraft", "horizon.browser.clear": "Leeren", "horizon.browser.my_servers": "Meine Server", "horizon.browser.favorites": "Favoriten", "horizon.browser.recent": "Zuletzt", "horizon.browser.lan": "LAN", "horizon.browser.discover": "Entdecken", "horizon.browser.filters": "Filter", "horizon.browser.presets": "Profile", "horizon.browser.files": "Dateien", "horizon.browser.sort": "Server sortieren", "horizon.browser.custom": "Eigene Reihenfolge", "horizon.browser.name": "Name", "horizon.browser.players": "Spieler", "horizon.browser.free_slots": "Freie Plätze", "horizon.browser.ping": "Ping", "horizon.browser.version": "Version", "horizon.browser.last_played": "Zuletzt gespielt", "horizon.browser.date_added": "Hinzugefügt", "horizon.browser.favorites_first": "Favoriten zuerst", "horizon.browser.favorite": "Stern", "horizon.browser.tag": "Tags", "horizon.browser.up": "↑", "horizon.browser.down": "↓", "horizon.browser.details": "Info", "horizon.browser.reset": "Zurücksetzen", "horizon.browser.undo": "Rückgängig", "horizon.browser.join": "Beitreten", "horizon.browser.direct": "Direkt verbinden", "horizon.browser.add": "Server hinzufügen", "horizon.browser.edit": "Bearbeiten", "horizon.browser.remove": "Entfernen", "horizon.browser.refresh": "Aktualisieren", "horizon.browser.back": "Zurück", "horizon.browser.address": "Adresse (Host[:Port] oder [IPv6]:Port)", "horizon.browser.tags": "Tags (durch Komma getrennt)", "horizon.browser.notes": "Notizen", "horizon.browser.group": "Gruppe / Ordner", "horizon.browser.language": "Sprache", "horizon.browser.region": "Region", "horizon.browser.preset_name": "Profilname", "horizon.browser.file_path": "Dateipfad (JSON oder servers.dat)", "horizon.browser.min_players": "Mindestens Spieler", "horizon.browser.max_players": "Höchstens Spieler", "horizon.browser.max_ping": "Höchster Ping (ms)", "horizon.browser.specific_version": "Bestimmte Version", "horizon.browser.status_filters": "Status", "horizon.browser.value_filters": "Werte", "horizon.browser.tag_filters": "Tags / Region", "horizon.browser.status": "Status", "horizon.browser.any": "Alle", "horizon.browser.online": "Online", "horizon.browser.offline": "Offline", "horizon.browser.compatible": "Kompatibel", "horizon.browser.incompatible": "Anderes Protokoll", "horizon.browser.not_empty": "Nicht leer", "horizon.browser.not_full": "Nicht voll", "horizon.browser.joinable": "Nur bekannt offline", "horizon.browser.auth": "Kontoprüfung", "horizon.browser.auth_unknown": "Kontomodus unbekannt", "horizon.browser.auth_offline": "Offline-Modus", "horizon.browser.auth_online": "Online-Modus", "horizon.browser.auth_note": "Status-Pings verraten den Kontomodus nicht. Angemeldetes Horizon unterstützt Online-Server; Offline-Namen benötigen den Offline-Modus.", "horizon.browser.unknown": "Unbekannt", "horizon.browser.unknown_count": "?/?", "horizon.browser.pinging": "Ping läuft…", "horizon.browser.timeout": "Zeitlimit", "horizon.browser.dns_error": "DNS-Fehler", "horizon.browser.malformed": "Ungültige Statusantwort", "horizon.browser.empty": "Noch keine Server gespeichert. Wähle Server hinzufügen oder Direkt verbinden.", "horizon.browser.no_results": "Keine passenden Server. Setze die Filter zurück, um alle Server anzuzeigen.", "horizon.browser.lan_empty": "LAN-Welten werden gesucht. Öffne eine Welt im selben Netzwerk für LAN.", "horizon.browser.directory_disabled": "Online-Entdecken ist aus. In den Einstellungen aktivieren.", "horizon.browser.directory_ready": "Öffentliche Server laden automatisch. Mit Aktualisieren erneut versuchen.", "horizon.browser.confirm_remove": "Ausgewählte Server entfernen?", "horizon.browser.remove_note": "Ausgewählte gespeicherte Server entfernen? 30 Sekunden lang rückgängig möglich.", "horizon.browser.removed": "Server entfernt. 30 Sekunden lang rückgängig möglich.", "horizon.browser.apply": "Übernehmen", "horizon.browser.consent": "Online-Verzeichnis aktivieren", "horizon.browser.privacy": "Datenschutz beim Online-Verzeichnis", "horizon.browser.privacy_note": "Entdecken verwendet minecraftserve.rs und die öffentliche Modrinth-API. Die Dienste sehen deine IP-Adresse, die angefragte Seite und öffentliche Tagfilter; minecraftserve.rs erhält auch öffentliche Versionsfilter. Gespeicherte Server, Notizen, Spielernamen und Suchtext bleiben lokal. Online-Entdecken lässt sich in den Einstellungen ausschalten. Jede Quelle wird 5 Minuten gecacht; höchstens eine Anfrage je Quelle und Minute. Geladene Server werden direkt für Status-Pings kontaktiert. Modrinth-Bilder und Modpacks werden nicht nachgeladen. Einträge werden erst durch Hinzufügen gespeichert.", "horizon.browser.packs_ask": "Pakete: Nachfragen", "horizon.browser.packs_on": "Pakete: Aktiviert", "horizon.browser.packs_off": "Pakete: Deaktiviert", "horizon.browser.more": "Mehr…", "horizon.browser.previous": "Vorherige", "horizon.browser.modern": "Modernen Server-Browser nutzen", "horizon.browser.menu_style": "Menüstil", "horizon.browser.concurrency": "Gleichzeitige Pings", "horizon.browser.auto_refresh": "Automatisch aktualisieren", "horizon.browser.online_directory": "Online-Verzeichnis", "horizon.browser.defaults": "Standardwerte", "horizon.browser.reduced_motion": "Bewegung reduzieren", "horizon.browser.default_tab": "Standardreiter", "horizon.browser.default_sort": "Standardsortierung", "horizon.browser.show_offline": "Offline-Server anzeigen", "horizon.browser.on": "Ein", "horizon.browser.off": "Aus", "horizon.browser.remove_preset": "Benanntes Profil entfernen", "horizon.browser.import": "Importieren", "horizon.browser.export_json": "JSON exportieren", "horizon.browser.export_nbt": "Vanilla-NBT exportieren", "horizon.browser.imported": "Importierte Server", "horizon.browser.latency_history": "Ping-Verlauf (lokal)", "horizon.browser.invalid_address": "Gib einen Namen und gültigen Host[:Port] oder [IPv6]:Port ein.", "horizon.browser.duplicate": "Diese Adresse ist bereits gespeichert.", "horizon.browser.invalid_filter": "Gib nichtnegative ganze Zahlen ein; Minimum darf Maximum nicht überschreiten.", "horizon.browser.save_error": "Speichern fehlgeschlagen", "horizon.browser.load_error": "Laden fehlgeschlagen", "horizon.browser.file_error": "Dateifehler", "horizon.browser.load_directory": "Verzeichnis laden", "horizon.browser.next_page": "Nächste Seite", "horizon.browser.previous_page": "Vorherige Seite", "horizon.browser.directory_loading": "Verzeichnis wird geladen…", "horizon.browser.directory_error": "Verzeichnis nicht verfügbar; gespeicherte Server funktionieren weiter.", "horizon.browser.directory_rate": "Bitte warte vor einer weiteren Seitenanfrage.", "horizon.browser.directory_source": "Online · minecraftserve.rs + Modrinth", "horizon.browser.directory_save": "Auswahl speichern", "horizon.browser.validation_ok": "Adresse gültig. SRV wird beim Pingen oder Beitreten aufgelöst.", "horizon.browser.drag_hint": "Linken Rand zum Sortieren ziehen; Strg/Umschalt wählt mehrere.", "horizon.browser.offline_only_note": "Bekannte Offline-Server; unbekannte Kontomodi werden ausgeblendet.", "horizon.browser.name_required": "Bitte einen Servernamen eingeben.", "horizon.browser.export_reserved": "Bitte eine Exportdatei außerhalb der Browser-Datendateien wählen.", "horizon.browser.exported": "Export gespeichert.", "horizon.browser.select_details": "Wähle einen Server für MOTD, Spieler, Notizen und Ping-Verlauf.", "horizon.browser.support": "☕ Ko-fi", "horizon.browser.support_project": "☕ Projekt unterstützen (Ko-fi)", "horizon.browser.dismiss": "×", "horizon.browser.feedback": "💬 Feedback", "horizon.browser.feedback_title": "Feedback & Vorschläge", "horizon.browser.feedback_prompt": "Deine Nachricht oder Fehlerbeschreibung...", "horizon.browser.feedback_idea": "💡 Vorschlag", "horizon.browser.feedback_bug": "🐛 Fehler", "horizon.browser.feedback_general": "⭐ Allgemein", "horizon.browser.feedback_save": "💾 Lokal speichern", "horizon.browser.feedback_kofi": "☕ Auf Ko-fi senden", "horizon.browser.feedback_saved": "Vielen Dank! Dein Feedback wurde gespeichert.", "horizon.browser.feedback_copied": "Feedback kopiert & Ko-fi geöffnet!", "horizon.browser.feedback_empty": "Bitte gib zuerst einen Text ein.", "horizon.browser.feedback_server": "🌐 Server listen", "horizon.browser.feedback_server_prompt": "Server-Adresse, Name, Tags & Beschreibung:", "horizon.browser.feedback_server_saved": "Servervorschlag lokal gespeichert. Noch nicht versendet.", "horizon.browser.feedback_send": "Feedback senden", "horizon.browser.feedback_privacy": "Senden übermittelt nur diese Nachricht und Kategorie über Static Forms an den Mod-Autor. Meine Server bleiben lokal.", "horizon.browser.feedback_sending": "Wird übermittelt… Bitte warten.", "horizon.browser.feedback_accepted": "Vom Maildienst angenommen. Die E-Mail-Zustellung ist noch nicht bestätigt.", "horizon.browser.feedback_failed": "Übermittlung nicht bestätigt. Entwurf bleibt lokal gespeichert. Bitte später erneut versuchen.", "horizon.browser.feedback_limited": "Bitte mindestens eine Minute warten. Der Maildienst kann zusätzlich sein Versandlimit erreicht haben.", "horizon.browser.feedback_not_configured": "Automatischer Versand ist noch nicht eingerichtet. Entwürfe können lokal gespeichert werden.", "horizon.browser.feedback_draft_failed": "Der Entwurf konnte nicht lokal gespeichert werden. Es wurde nichts gesendet.", "horizon.browser.cancel": "Abbrechen", "horizon.browser.directory_partial": "Eine Serverquelle ist gerade nicht verfügbar. Die übrigen Einträge bleiben nutzbar."}"###;
+const EN_US: &str = r###"{"horizon.browser.title": "Server Atlas", "horizon.browser.search": "Search name, address, MOTD, tags, notes…", "horizon.browser.result_count": "%s of %s servers", "horizon.browser.settings": "Settings", "horizon.browser.classic": "Classic", "horizon.browser.modern_style": "Minecraft", "horizon.browser.clear": "Clear", "horizon.browser.my_servers": "My Servers", "horizon.browser.favorites": "Favorites", "horizon.browser.recent": "Recent", "horizon.browser.lan": "LAN", "horizon.browser.discover": "Discover", "horizon.browser.filters": "Filters", "horizon.browser.presets": "Presets", "horizon.browser.files": "Files", "horizon.browser.sort": "Sort servers", "horizon.browser.custom": "Custom order", "horizon.browser.name": "Name", "horizon.browser.players": "Players", "horizon.browser.free_slots": "Free slots", "horizon.browser.ping": "Ping", "horizon.browser.version": "Version", "horizon.browser.last_played": "Last played", "horizon.browser.date_added": "Date added", "horizon.browser.favorites_first": "Favorites first", "horizon.browser.favorite": "Star", "horizon.browser.tag": "Tags", "horizon.browser.up": "↑", "horizon.browser.down": "↓", "horizon.browser.details": "Info", "horizon.browser.reset": "Reset", "horizon.browser.undo": "Undo", "horizon.browser.join": "Join", "horizon.browser.direct": "Direct connect", "horizon.browser.add": "Add server", "horizon.browser.edit": "Edit", "horizon.browser.remove": "Remove", "horizon.browser.refresh": "Refresh", "horizon.browser.back": "Back", "horizon.browser.address": "Address (host[:port] or [IPv6]:port)", "horizon.browser.tags": "Tags (comma separated)", "horizon.browser.notes": "Notes", "horizon.browser.group": "Group / folder", "horizon.browser.language": "Language", "horizon.browser.region": "Region", "horizon.browser.preset_name": "Preset name", "horizon.browser.file_path": "JSON or servers.dat file path", "horizon.browser.min_players": "Minimum players", "horizon.browser.max_players": "Maximum players", "horizon.browser.max_ping": "Maximum ping (ms)", "horizon.browser.specific_version": "Specific version", "horizon.browser.status_filters": "Status", "horizon.browser.value_filters": "Values", "horizon.browser.tag_filters": "Tags / region", "horizon.browser.status": "Status", "horizon.browser.any": "Any", "horizon.browser.online": "Online", "horizon.browser.offline": "Offline", "horizon.browser.compatible": "Compatible", "horizon.browser.incompatible": "Protocol differs", "horizon.browser.not_empty": "Not empty", "horizon.browser.not_full": "Not full", "horizon.browser.auth": "Private account note", "horizon.browser.auth_unknown": "Account mode unknown", "horizon.browser.auth_offline": "Account note: Offline mode", "horizon.browser.auth_online": "Account note: Online mode", "horizon.browser.unknown": "Unknown", "horizon.browser.unknown_count": "?/?", "horizon.browser.pinging": "Pinging…", "horizon.browser.timeout": "Timed out", "horizon.browser.dns_error": "DNS error", "horizon.browser.malformed": "Invalid status reply", "horizon.browser.empty": "No saved servers yet. Choose Add server or Direct connect.", "horizon.browser.no_results": "No servers match. Reset filters to show all servers.", "horizon.browser.lan_empty": "Looking for LAN worlds. Open a world to LAN on the same network.", "horizon.browser.directory_disabled": "Online discovery is off. Enable it in Settings.", "horizon.browser.directory_ready": "Public servers load automatically. Use Refresh to try again.", "horizon.browser.confirm_remove": "Remove selected servers?", "horizon.browser.remove_note": "Remove the selected saved servers? You can undo for 30 seconds.", "horizon.browser.removed": "Servers removed. Undo is available for 30 seconds.", "horizon.browser.apply": "Apply", "horizon.browser.consent": "Enable online directory", "horizon.browser.privacy": "Online directory privacy", "horizon.browser.privacy_note": "Online Discover contacts minecraftserve.rs and Modrinth. They see your IP address, requested page, and public tag filters. minecraftserve.rs also receives a public version filter. Visible servers and up to two nearby rows on either side receive direct status pings. Saved lists, notes, player names, and search text stay local. You can turn this off in Settings.", "horizon.browser.packs_ask": "Packs: Ask", "horizon.browser.packs_on": "Packs: Enabled", "horizon.browser.packs_off": "Packs: Disabled", "horizon.browser.more": "More…", "horizon.browser.previous": "Previous", "horizon.browser.modern": "Use modern server browser", "horizon.browser.menu_style": "Menu style", "horizon.browser.concurrency": "Concurrent pings", "horizon.browser.auto_refresh": "Auto-refresh", "horizon.browser.online_directory": "Online directory", "horizon.browser.defaults": "Reset to defaults", "horizon.browser.reduced_motion": "Reduce motion", "horizon.browser.default_tab": "Default tab", "horizon.browser.default_sort": "Default sort", "horizon.browser.show_offline": "Show offline servers", "horizon.browser.on": "On", "horizon.browser.off": "Off", "horizon.browser.remove_preset": "Remove named preset", "horizon.browser.import": "Import", "horizon.browser.export_json": "Export JSON", "horizon.browser.export_nbt": "Export vanilla NBT", "horizon.browser.imported": "Servers imported", "horizon.browser.latency_history": "Latency history (local)", "horizon.browser.invalid_address": "Enter a name and a valid host[:port] or [IPv6]:port.", "horizon.browser.duplicate": "This address is already saved.", "horizon.browser.invalid_filter": "Enter positive whole numbers; minimum must not exceed maximum.", "horizon.browser.save_error": "Could not save", "horizon.browser.load_error": "Could not load", "horizon.browser.file_error": "File error", "horizon.browser.load_directory": "Load directory", "horizon.browser.next_page": "Next page", "horizon.browser.previous_page": "Previous page", "horizon.browser.directory_loading": "Loading directory…", "horizon.browser.directory_error": "Directory unavailable; saved servers still work.", "horizon.browser.directory_rate": "Please wait before requesting another page.", "horizon.browser.directory_source": "Online · minecraftserve.rs + Modrinth", "horizon.browser.directory_save": "Save selected", "horizon.browser.validation_ok": "Address valid. SRV is resolved when pinging or joining.", "horizon.browser.drag_hint": "Drag the left edge to reorder; Ctrl/Shift selects several.", "horizon.browser.name_required": "Enter a server name.", "horizon.browser.export_reserved": "Choose an export file outside the browser's own data files.", "horizon.browser.exported": "Export saved.", "horizon.browser.select_details": "Select a server to see its MOTD, players, notes and latency.", "horizon.browser.support": "☕ Ko-fi", "horizon.browser.support_project": "☕ Support project (Ko-fi)", "horizon.browser.dismiss": "×", "horizon.browser.feedback": "💬 Feedback", "horizon.browser.feedback_title": "Feedback & Suggestions", "horizon.browser.feedback_prompt": "Your message or bug report...", "horizon.browser.feedback_idea": "💡 Idea", "horizon.browser.feedback_bug": "🐛 Bug", "horizon.browser.feedback_general": "⭐ General", "horizon.browser.feedback_save": "💾 Save locally", "horizon.browser.feedback_saved": "Thank you! Your feedback has been saved.", "horizon.browser.feedback_empty": "Please enter some text first.", "horizon.browser.feedback_server": "🌐 Submit Server", "horizon.browser.feedback_server_prompt": "Server address, name, tags & description:", "horizon.browser.feedback_server_saved": "Server suggestion saved as a local draft.", "horizon.browser.feedback_draft_failed": "Could not save your draft locally. Nothing was sent.", "horizon.browser.cancel": "Cancel", "horizon.browser.directory_partial": "One server source is currently unavailable. Other entries remain usable.", "horizon.browser.feedback_local": "Feedback and server suggestions are saved as local drafts."}"###;
+const DE_DE: &str = r###"{"horizon.browser.title": "Server Atlas", "horizon.browser.search": "Name, Adresse, MOTD, Tags, Notizen suchen…", "horizon.browser.result_count": "%s von %s Servern", "horizon.browser.settings": "Einstellungen", "horizon.browser.classic": "Klassisch", "horizon.browser.modern_style": "Minecraft", "horizon.browser.clear": "Leeren", "horizon.browser.my_servers": "Meine Server", "horizon.browser.favorites": "Favoriten", "horizon.browser.recent": "Zuletzt", "horizon.browser.lan": "LAN", "horizon.browser.discover": "Entdecken", "horizon.browser.filters": "Filter", "horizon.browser.presets": "Profile", "horizon.browser.files": "Dateien", "horizon.browser.sort": "Server sortieren", "horizon.browser.custom": "Eigene Reihenfolge", "horizon.browser.name": "Name", "horizon.browser.players": "Spieler", "horizon.browser.free_slots": "Freie Plätze", "horizon.browser.ping": "Ping", "horizon.browser.version": "Version", "horizon.browser.last_played": "Zuletzt gespielt", "horizon.browser.date_added": "Hinzugefügt", "horizon.browser.favorites_first": "Favoriten zuerst", "horizon.browser.favorite": "Stern", "horizon.browser.tag": "Tags", "horizon.browser.up": "↑", "horizon.browser.down": "↓", "horizon.browser.details": "Info", "horizon.browser.reset": "Zurücksetzen", "horizon.browser.undo": "Rückgängig", "horizon.browser.join": "Beitreten", "horizon.browser.direct": "Direkt verbinden", "horizon.browser.add": "Server hinzufügen", "horizon.browser.edit": "Bearbeiten", "horizon.browser.remove": "Entfernen", "horizon.browser.refresh": "Aktualisieren", "horizon.browser.back": "Zurück", "horizon.browser.address": "Adresse (Host[:Port] oder [IPv6]:Port)", "horizon.browser.tags": "Tags (durch Komma getrennt)", "horizon.browser.notes": "Notizen", "horizon.browser.group": "Gruppe / Ordner", "horizon.browser.language": "Sprache", "horizon.browser.region": "Region", "horizon.browser.preset_name": "Profilname", "horizon.browser.file_path": "Dateipfad (JSON oder servers.dat)", "horizon.browser.min_players": "Mindestens Spieler", "horizon.browser.max_players": "Höchstens Spieler", "horizon.browser.max_ping": "Höchster Ping (ms)", "horizon.browser.specific_version": "Bestimmte Version", "horizon.browser.status_filters": "Status", "horizon.browser.value_filters": "Werte", "horizon.browser.tag_filters": "Tags / Region", "horizon.browser.status": "Status", "horizon.browser.any": "Alle", "horizon.browser.online": "Online", "horizon.browser.offline": "Offline", "horizon.browser.compatible": "Kompatibel", "horizon.browser.incompatible": "Anderes Protokoll", "horizon.browser.not_empty": "Nicht leer", "horizon.browser.not_full": "Nicht voll", "horizon.browser.auth": "Private Kontonotiz", "horizon.browser.auth_unknown": "Kontomodus unbekannt", "horizon.browser.auth_offline": "Kontonotiz: Offline-Modus", "horizon.browser.auth_online": "Kontonotiz: Online-Modus", "horizon.browser.unknown": "Unbekannt", "horizon.browser.unknown_count": "?/?", "horizon.browser.pinging": "Ping läuft…", "horizon.browser.timeout": "Zeitlimit", "horizon.browser.dns_error": "DNS-Fehler", "horizon.browser.malformed": "Ungültige Statusantwort", "horizon.browser.empty": "Noch keine Server gespeichert. Wähle Server hinzufügen oder Direkt verbinden.", "horizon.browser.no_results": "Keine passenden Server. Setze die Filter zurück, um alle Server anzuzeigen.", "horizon.browser.lan_empty": "LAN-Welten werden gesucht. Öffne eine Welt im selben Netzwerk für LAN.", "horizon.browser.directory_disabled": "Online-Entdecken ist aus. In den Einstellungen aktivieren.", "horizon.browser.directory_ready": "Öffentliche Server laden automatisch. Mit Aktualisieren erneut versuchen.", "horizon.browser.confirm_remove": "Ausgewählte Server entfernen?", "horizon.browser.remove_note": "Ausgewählte gespeicherte Server entfernen? 30 Sekunden lang rückgängig möglich.", "horizon.browser.removed": "Server entfernt. 30 Sekunden lang rückgängig möglich.", "horizon.browser.apply": "Übernehmen", "horizon.browser.consent": "Online-Verzeichnis aktivieren", "horizon.browser.privacy": "Datenschutz beim Online-Verzeichnis", "horizon.browser.privacy_note": "Online-Entdecken fragt minecraftserve.rs und Modrinth ab. Die Dienste sehen deine IP-Adresse, die angefragte Seite und öffentliche Tagfilter. minecraftserve.rs erhält auch einen öffentlichen Versionsfilter. Sichtbare Server und bis zu zwei benachbarte Zeilen pro Seite erhalten direkte Status-Pings. Gespeicherte Listen, Notizen, Spielernamen und Suchtext bleiben lokal. Du kannst Online-Entdecken in den Einstellungen ausschalten.", "horizon.browser.packs_ask": "Pakete: Nachfragen", "horizon.browser.packs_on": "Pakete: Aktiviert", "horizon.browser.packs_off": "Pakete: Deaktiviert", "horizon.browser.more": "Mehr…", "horizon.browser.previous": "Vorherige", "horizon.browser.modern": "Modernen Server-Browser nutzen", "horizon.browser.menu_style": "Menüstil", "horizon.browser.concurrency": "Gleichzeitige Pings", "horizon.browser.auto_refresh": "Automatisch aktualisieren", "horizon.browser.online_directory": "Online-Verzeichnis", "horizon.browser.defaults": "Standardwerte", "horizon.browser.reduced_motion": "Bewegung reduzieren", "horizon.browser.default_tab": "Standardreiter", "horizon.browser.default_sort": "Standardsortierung", "horizon.browser.show_offline": "Offline-Server anzeigen", "horizon.browser.on": "Ein", "horizon.browser.off": "Aus", "horizon.browser.remove_preset": "Benanntes Profil entfernen", "horizon.browser.import": "Importieren", "horizon.browser.export_json": "JSON exportieren", "horizon.browser.export_nbt": "Vanilla-NBT exportieren", "horizon.browser.imported": "Importierte Server", "horizon.browser.latency_history": "Ping-Verlauf (lokal)", "horizon.browser.invalid_address": "Gib einen Namen und gültigen Host[:Port] oder [IPv6]:Port ein.", "horizon.browser.duplicate": "Diese Adresse ist bereits gespeichert.", "horizon.browser.invalid_filter": "Gib nichtnegative ganze Zahlen ein; Minimum darf Maximum nicht überschreiten.", "horizon.browser.save_error": "Speichern fehlgeschlagen", "horizon.browser.load_error": "Laden fehlgeschlagen", "horizon.browser.file_error": "Dateifehler", "horizon.browser.load_directory": "Verzeichnis laden", "horizon.browser.next_page": "Nächste Seite", "horizon.browser.previous_page": "Vorherige Seite", "horizon.browser.directory_loading": "Verzeichnis wird geladen…", "horizon.browser.directory_error": "Verzeichnis nicht verfügbar; gespeicherte Server funktionieren weiter.", "horizon.browser.directory_rate": "Bitte warte vor einer weiteren Seitenanfrage.", "horizon.browser.directory_source": "Online · minecraftserve.rs + Modrinth", "horizon.browser.directory_save": "Auswahl speichern", "horizon.browser.validation_ok": "Adresse gültig. SRV wird beim Pingen oder Beitreten aufgelöst.", "horizon.browser.drag_hint": "Linken Rand zum Sortieren ziehen; Strg/Umschalt wählt mehrere.", "horizon.browser.name_required": "Bitte einen Servernamen eingeben.", "horizon.browser.export_reserved": "Bitte eine Exportdatei außerhalb der Browser-Datendateien wählen.", "horizon.browser.exported": "Export gespeichert.", "horizon.browser.select_details": "Wähle einen Server für MOTD, Spieler, Notizen und Ping-Verlauf.", "horizon.browser.support": "☕ Ko-fi", "horizon.browser.support_project": "☕ Projekt unterstützen (Ko-fi)", "horizon.browser.dismiss": "×", "horizon.browser.feedback": "💬 Feedback", "horizon.browser.feedback_title": "Feedback & Vorschläge", "horizon.browser.feedback_prompt": "Deine Nachricht oder Fehlerbeschreibung...", "horizon.browser.feedback_idea": "💡 Vorschlag", "horizon.browser.feedback_bug": "🐛 Fehler", "horizon.browser.feedback_general": "⭐ Allgemein", "horizon.browser.feedback_save": "💾 Lokal speichern", "horizon.browser.feedback_saved": "Vielen Dank! Dein Feedback wurde gespeichert.", "horizon.browser.feedback_empty": "Bitte gib zuerst einen Text ein.", "horizon.browser.feedback_server": "🌐 Server listen", "horizon.browser.feedback_server_prompt": "Server-Adresse, Name, Tags & Beschreibung:", "horizon.browser.feedback_server_saved": "Servervorschlag als lokaler Entwurf gespeichert.", "horizon.browser.feedback_draft_failed": "Der Entwurf konnte nicht lokal gespeichert werden. Es wurde nichts gesendet.", "horizon.browser.cancel": "Abbrechen", "horizon.browser.directory_partial": "Eine Serverquelle ist gerade nicht verfügbar. Die übrigen Einträge bleiben nutzbar.", "horizon.browser.feedback_local": "Feedback und Servervorschläge werden als lokale Entwürfe gespeichert."}"###;
 fn draw_server_icon(
     atlas: &HudAtlas,
     batch: &mut HudBatch,
@@ -8147,11 +7943,6 @@ mod catalog {
             "PlumSMP",
             "yt.plumsmp.net:25565",
             &["pvp", "prison", "skyblock", "smp", "survival"],
-        ),
-        (
-            "BlocksMC",
-            "play.blocksmc.com:25565",
-            &["pvp", "bedwars", "minigames", "cracked"],
         ),
         (
             "Netherite",
@@ -9585,50 +9376,6 @@ mod catalog {
             ],
         ),
         (
-            "NewBlock - 新方块",
-            "modrinth.play.3mc.top:25565",
-            &[
-                "adventure-mode",
-                "anarchy",
-                "battle-royale",
-                "competitive",
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "fabric",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "Create: Assembly Line SMP",
-            "kubabin.dev:25565",
-            &[
-                "custom-content",
-                "economy",
-                "neoforge",
-                "offline-mode",
-                "plots",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-                "modded",
-            ],
-        ),
-        (
             "CreateVC",
             "proxy.createvc.org:25565",
             &[
@@ -9703,27 +9450,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "towns",
-                "modded",
-            ],
-        ),
-        (
-            "Pokemania Network",
-            "pokemania.network:25565",
-            &[
-                "custom-content",
-                "economy",
-                "fabric",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "pokemon",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
                 "modded",
             ],
         ),
@@ -10177,21 +9903,6 @@ mod catalog {
                 "teams",
                 "towns",
                 "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "MTR France Server",
-            "176.189.152.194:10000",
-            &[
-                "adventure-mode",
-                "creative-mode",
-                "creator-community",
-                "fabric",
-                "multiplayer",
-                "offline-mode",
-                "technical",
-                "technology",
                 "modded",
             ],
         ),
@@ -10716,18 +10427,6 @@ mod catalog {
             ],
         ),
         (
-            "[苹果服务器]-apple",
-            "mc.mcapple.top:25565",
-            &[
-                "custom-content",
-                "neoforge",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
             "PokeCol",
             "pokemon.colombiarp.com:25565",
             &["fabric", "pokemon", "modded"],
@@ -10818,22 +10517,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-                "modded",
-            ],
-        ),
-        (
-            "To Shing S2",
-            "crystoria.24x7.hk:12098",
-            &[
-                "creative-mode",
-                "creator-community",
-                "custom-content",
-                "fabric",
-                "offline-mode",
-                "personal-worlds",
-                "technical",
-                "towns",
-                "whitelisted",
                 "modded",
             ],
         ),
@@ -10949,24 +10632,6 @@ mod catalog {
             &["fabric", "modded"],
         ),
         (
-            "!~ The Purple Bakery SMP ~!",
-            "glue-olivia.tun.ply.gg:25565",
-            &[
-                "custom-content",
-                "fabric",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-                "modded",
-            ],
-        ),
-        (
             "Atzlk MC: Server",
             "mc.atzlk.com:25565",
             &[
@@ -10981,18 +10646,6 @@ mod catalog {
                 "towns",
                 "vanilla-like",
                 "world-resets",
-                "modded",
-            ],
-        ),
-        (
-            "Create automoblity",
-            "createautomobility.falixsrv.me:25565",
-            &[
-                "custom-content",
-                "neoforge",
-                "offline-mode",
-                "smp",
-                "survival-mode",
                 "modded",
             ],
         ),
@@ -11118,22 +10771,6 @@ mod catalog {
             ],
         ),
         (
-            "Ecolture",
-            "148.113.1.119:19142",
-            &[
-                "bosses",
-                "dungeons",
-                "fabric",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "modded",
-            ],
-        ),
-        (
             "Stardust Meadows Server",
             "172.240.9.43:25672",
             &[
@@ -11181,25 +10818,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "Kasubody SMP",
-            "play.kasubody.com:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "fabric",
-                "media",
-                "offline-mode",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "modded",
             ],
         ),
         (
@@ -11673,27 +11291,6 @@ mod catalog {
             ],
         ),
         (
-            "SubMine - SMP",
-            "mc.submine.net:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "neoforge",
-                "offline-mode",
-                "pve",
-                "questing",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
             "Skyforge Aeronautics",
             "skyforge.servers.vltgg.net:25565",
             &[
@@ -11716,42 +11313,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "technical",
-                "modded",
-            ],
-        ),
-        (
-            "季落秋风",
-            "jfserver.top:25565",
-            &[
-                "economy",
-                "fabric",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "skyblock",
-                "survival-mode",
-                "teams",
-                "modded",
-            ],
-        ),
-        (
-            "Dominion SMP",
-            "modrinth.dominionsmp.net:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "fabric",
-                "hardcore-mode",
-                "kitpvp",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "teams",
                 "modded",
             ],
         ),
@@ -11981,38 +11542,6 @@ mod catalog {
                 "towns",
                 "vanilla-like",
                 "modded",
-            ],
-        ),
-        (
-            "Sunrise Isle",
-            "awa.mcservers.win:25565",
-            &[
-                "economy",
-                "fabric",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
-            "LANVEX SMP",
-            "mc.lancsmp.ru:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "fabric",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
             ],
         ),
         (
@@ -12331,28 +11860,6 @@ mod catalog {
             ],
         ),
         (
-            "Block World Server",
-            "blockworld.eu.cc:25565",
-            &[
-                "crossplay",
-                "economy",
-                "fabric",
-                "gens",
-                "keep-inventory",
-                "mmo",
-                "neoforge",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-            ],
-        ),
-        (
             "Merkatin",
             "45.11.18.95:28001",
             &[
@@ -12443,27 +11950,6 @@ mod catalog {
             &["neoforge", "pvp", "smp", "survival-mode", "modded"],
         ),
         (
-            "樱花树下服务器",
-            "cd.2.frp.one:54000",
-            &[
-                "classes",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "mmo",
-                "neoforge",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "modded",
-            ],
-        ),
-        (
             "Eldoria",
             "eldoriarealm.com:25565",
             &[
@@ -12498,18 +11984,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "world-resets",
-                "modded",
-            ],
-        ),
-        (
-            "CreatorSMP",
-            "mc.nesp.im:25565",
-            &[
-                "custom-content",
-                "neoforge",
-                "offline-mode",
-                "smp",
-                "survival-mode",
                 "modded",
             ],
         ),
@@ -12603,22 +12077,6 @@ mod catalog {
             &["creative-mode", "fabric", "plots", "social", "modded"],
         ),
         (
-            "LastikSMP",
-            "lastiksmp.mc-join.me:25565",
-            &[
-                "custom-content",
-                "fabric",
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-                "modded",
-            ],
-        ),
-        (
             "Flipidippi SMP",
             "mc-flipidippi.falix.gg:25565",
             &["fabric", "smp", "survival-mode", "vanilla-like", "modded"],
@@ -12631,21 +12089,6 @@ mod catalog {
                 "fabric",
                 "survival-mode",
                 "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "Slarof",
-            "slarof.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "fabric",
-                "offline-mode",
-                "pve",
-                "social",
-                "survival-mode",
-                "teams",
                 "whitelisted",
             ],
         ),
@@ -12671,19 +12114,6 @@ mod catalog {
                 "rpg",
                 "smp",
                 "survival-mode",
-                "modded",
-            ],
-        ),
-        (
-            "Meow: Create",
-            "meowproject.good-mc.ru:25599",
-            &[
-                "neoforge",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "teams",
                 "modded",
             ],
         ),
@@ -12732,42 +12162,6 @@ mod catalog {
             ],
         ),
         (
-            "Aeropunk",
-            "45.134.108.171:25720",
-            &[
-                "custom-content",
-                "neoforge",
-                "offline-mode",
-                "pve",
-                "smp",
-                "social",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
-            "Temaki!",
-            "temaki.net:25565",
-            &[
-                "custom-content",
-                "economy",
-                "fabric",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "plots",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "BigCraft",
             "home.workshopfriends.com:25565",
             &[
@@ -12792,21 +12186,6 @@ mod catalog {
                 "social",
                 "towns",
                 "modded",
-            ],
-        ),
-        (
-            "SurvivalCraft SMP",
-            "mc.12345em.ru:10012",
-            &[
-                "crossplay",
-                "economy",
-                "fabric",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
             ],
         ),
         (
@@ -13103,22 +12482,6 @@ mod catalog {
             ],
         ),
         (
-            "DDM",
-            "glory-glass421837.vm-host.com:25565",
-            &[
-                "custom-content",
-                "fabric",
-                "media",
-                "offline-mode",
-                "pve",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "modded",
-            ],
-        ),
-        (
             "Spellbooks 'n Stuff SMP",
             "51.161.193.65:25571",
             &[
@@ -13191,32 +12554,6 @@ mod catalog {
             ],
         ),
         (
-            "IronHeart Season 0",
-            "ironheart.millida.host:25565",
-            &[
-                "adventure-mode",
-                "bosses",
-                "custom-content",
-                "economy",
-                "fabric",
-                "factions",
-                "mmo",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pve",
-                "pvp",
-                "questing",
-                "survival-mode",
-                "technical",
-                "towns",
-                "whitelisted",
-                "world-resets",
-                "modded",
-            ],
-        ),
-        (
             "EternaSMP",
             "eternasmp.net:25565",
             &[
@@ -13267,25 +12604,6 @@ mod catalog {
             &["neoforge", "modded"],
         ),
         (
-            "WCS NTM SMP",
-            "mc2.wcs.com.ru:25565",
-            &[
-                "factions",
-                "neoforge",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "whitelisted",
-                "modded",
-            ],
-        ),
-        (
             "Grand Civitas",
             "play.grandcivitas.com:25565",
             &[
@@ -13326,21 +12644,6 @@ mod catalog {
             ],
         ),
         (
-            "[Survival]Staxhes(Xinghe)",
-            "survival.stariver.dpdns.org:25565",
-            &[
-                "adventure-mode",
-                "creator-community",
-                "fabric",
-                "offline-mode",
-                "personal-worlds",
-                "social",
-                "survival-mode",
-                "teams",
-                "modded",
-            ],
-        ),
-        (
             "MineDex S3",
             "minedex.matrixhosting.in:25565",
             &[
@@ -13375,20 +12678,6 @@ mod catalog {
                 "rpg",
                 "survival-mode",
                 "world-resets",
-                "modded",
-            ],
-        ),
-        (
-            "JIAOMC",
-            "mc.jiaomc.top:25565",
-            &[
-                "creative-mode",
-                "forge",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
                 "modded",
             ],
         ),
@@ -13544,22 +12833,6 @@ mod catalog {
             ],
         ),
         (
-            "TengokuFirst.ru",
-            "mc.tengokufirst.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "neoforge",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
             "Cobblemoon",
             "play.cobblemoon.fr:25565",
             &[
@@ -13654,23 +12927,6 @@ mod catalog {
             ],
         ),
         (
-            "LarpSMP",
-            "larpsmp.jogar.io:25565",
-            &[
-                "economy",
-                "fabric",
-                "keep-inventory",
-                "neoforge",
-                "offline-mode",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "world-resets",
-                "modded",
-            ],
-        ),
-        (
             "CH Network",
             "comunidad-hispano.com:25565",
             &[
@@ -13683,26 +12939,6 @@ mod catalog {
                 "pvp",
                 "social",
                 "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "Survival Adventure PRK",
-            "prk.holy.gg:25565",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "dungeons",
-                "fabric",
-                "offline-mode",
-                "pve",
-                "questing",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
-                "world-resets",
                 "modded",
             ],
         ),
@@ -13920,18 +13156,6 @@ mod catalog {
             ],
         ),
         (
-            "juhaowan create server|据好玩机械动力服务器",
-            "juhaowan.636.ltd:25565",
-            &[
-                "custom-content",
-                "mmo",
-                "neoforge",
-                "offline-mode",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
             "Fairmon",
             "play.fairmon.fr:25565",
             &[
@@ -13966,22 +13190,6 @@ mod catalog {
                 "technical",
                 "towns",
                 "whitelisted",
-                "modded",
-            ],
-        ),
-        (
-            "Cogweels+",
-            "stank-threat.tun.ply.gg:25565",
-            &[
-                "creative-mode",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "neoforge",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
                 "modded",
             ],
         ),
@@ -14216,19 +13424,6 @@ mod catalog {
             ],
         ),
         (
-            "HKMC",
-            "hkmc.online:25565",
-            &[
-                "fabric",
-                "keep-inventory",
-                "offline-mode",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
             "SlimeSMP",
             "slimesmp.modpack.gg:25565",
             &[
@@ -14308,21 +13503,6 @@ mod catalog {
         ),
         ("VANILLA ANARCHY LAUNCH", "vanilla.bombasmp.org:25565", &[]),
         (
-            "CRITICRAFT",
-            "212.192.28.221:25571",
-            &[
-                "bosses",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
             "SimplePVP",
             "simplepvp.apexmc.co:25565",
             &["creator-community", "pvp", "teams"],
@@ -14367,29 +13547,6 @@ mod catalog {
             ],
         ),
         (
-            "Infinitrix Evolution",
-            "infinitrix.evo.lagless.games:25565",
-            &[
-                "battle-royale",
-                "bosses",
-                "custom-content",
-                "factions",
-                "forge",
-                "minigames",
-                "mmo",
-                "offline-mode",
-                "op",
-                "parkour",
-                "pvp",
-                "racing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "technical",
-                "modded",
-            ],
-        ),
-        (
             "Cheat SMP",
             "play.cheatsmp.dev:25565",
             &[
@@ -14404,24 +13561,6 @@ mod catalog {
                 "pvp",
                 "smp",
                 "survival-mode",
-            ],
-        ),
-        (
-            "MineMania",
-            "play.minemania.hu:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
             ],
         ),
         (
@@ -14524,30 +13663,6 @@ mod catalog {
             ],
         ),
         (
-            "BalkanLand",
-            "play.balkanland.org:25565",
-            &[
-                "anarchy",
-                "bedwars",
-                "classes",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "minigames",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-            ],
-        ),
-        (
             "VastalaMC",
             "play.vastalamc.net:25565",
             &[
@@ -14560,11 +13675,6 @@ mod catalog {
                 "social",
                 "towns",
             ],
-        ),
-        (
-            "Pillars of Fortune",
-            "pof.xubi.org:25565",
-            &["competitive", "microgames", "offline-mode", "pvp"],
         ),
         (
             "Clanker SMP",
@@ -14593,30 +13703,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "ElementalMC",
-            "modrinth.elementalmc.live:25565",
-            &[
-                "bosses",
-                "classes",
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "factions",
-                "media",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "rpg",
-                "smp",
-                "social",
-                "teams",
-                "towns",
                 "vanilla-like",
             ],
         ),
@@ -14783,34 +13869,6 @@ mod catalog {
             ],
         ),
         (
-            "RestaMC",
-            "play.restamc.com:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "economy",
-                "gens",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "AnchorVanilla",
-            "anchorvanilla.shockbyte.app:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "SatiricalMC! (Factions/Sandbox) ◝(ᵔᗜᵔ)◜",
             "satire.linuxoz.net:25565",
             &[
@@ -14832,31 +13890,6 @@ mod catalog {
                 "teams",
                 "vanilla-like",
                 "world-resets",
-            ],
-        ),
-        (
-            "Clanmine | RU / EN",
-            "clanmine.mymcs.host:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "network",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "seven-eleven",
-            "play.margoles.xyz:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -14949,24 +13982,6 @@ mod catalog {
             ],
         ),
         (
-            "PokeRayou Season 3 - Cobblemon Academy Server Pack of PokéNyle!",
-            "83.143.117.19:20619",
-            &[
-                "adventure-mode",
-                "competitive",
-                "custom-content",
-                "dungeons",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "pokemon",
-                "questing",
-                "social",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
             "NyxMc",
             "play.nyx-mc.net:25565",
             &["crossplay", "smp", "survival-mode"],
@@ -14998,20 +14013,6 @@ mod catalog {
                 "questing",
                 "survival-mode",
                 "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "小猫巷",
-            "xiaomaoxiang.me:25565",
-            &[
-                "economy",
-                "keep-inventory",
-                "mmo",
-                "offline-mode",
-                "personal-worlds",
-                "questing",
-                "survival-mode",
                 "vanilla-like",
             ],
         ),
@@ -15083,24 +14084,6 @@ mod catalog {
             "CrystalVanilla",
             "crystalvanilla.net:25565",
             &["competitive", "economy", "pvp", "smp"],
-        ),
-        (
-            "WanderwoodSMP",
-            "java.wanderwoodsmp.com:25565",
-            &[
-                "anarchy",
-                "bedwars",
-                "competitive",
-                "crossplay",
-                "kitpvp",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "survival-mode",
-            ],
         ),
         (
             "PlugFFA",
@@ -15191,16 +14174,6 @@ mod catalog {
             ],
         ),
         (
-            "Test Server",
-            "tw-1.qwq.fan:63556",
-            &[
-                "creative-mode",
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-            ],
-        ),
-        (
             "Pootis Smp 2",
             "pootissmp2.folium.lol:25565",
             &[
@@ -15286,22 +14259,6 @@ mod catalog {
             &["smp", "survival-mode", "whitelisted"],
         ),
         (
-            "StellarNetwork",
-            "mc.stellarnetwork.fun:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "ZevKev",
             "play.zevkev.de:25565",
             &[
@@ -15346,35 +14303,6 @@ mod catalog {
             "SpectreSMP",
             "mc.spectresmp.com:25565",
             &["smp", "vanilla-like"],
-        ),
-        (
-            "AppleRock Server",
-            "au-1.qwq.fan:30125",
-            &[
-                "creative-mode",
-                "creator-community",
-                "crossplay",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "op",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "world-resets",
-            ],
-        ),
-        (
-            "Dessert Cookie",
-            "cookiesmpz.playwithbao.com:25565",
-            &[
-                "anarchy",
-                "custom-content",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-            ],
         ),
         (
             "KyuroMC",
@@ -15509,18 +14437,6 @@ mod catalog {
             ],
         ),
         (
-            "League of Minecraft",
-            "157.85.95.215:20367",
-            &[
-                "competitive",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "SteelSong",
             "57.128.22.87:25650",
             &[
@@ -15536,21 +14452,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "Cryndel Vanilla",
-            "cryndel.ru:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -15665,22 +14566,6 @@ mod catalog {
         ),
         ("Nature Smp", "play.akashplayz.in:25679", &[]),
         (
-            "MundoHispano",
-            "mc.mundohispano.lat:25565",
-            &[
-                "crossplay",
-                "dungeons",
-                "economy",
-                "gens",
-                "offline-mode",
-                "oneblock",
-                "pvp",
-                "smp",
-                "social",
-                "teams",
-            ],
-        ),
-        (
             "HOMI SMP",
             "play.homismp.fun:19132",
             &[
@@ -15734,23 +14619,6 @@ mod catalog {
             &["crossplay", "smp", "survival-mode"],
         ),
         (
-            "TokenSMP",
-            "tokensmp090.mcsh.gg:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "lifesteal",
-                "offline-mode",
-                "op",
-                "prison",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "Lymion",
             "217.60.245.245:25780",
             &[
@@ -15759,21 +14627,6 @@ mod catalog {
                 "questing",
                 "smp",
                 "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Vanguards",
-            "mc.vanguards.cc:25565",
-            &[
-                "anarchy",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
                 "survival-mode",
                 "towns",
                 "vanilla-like",
@@ -15812,49 +14665,6 @@ mod catalog {
             ],
         ),
         (
-            "Vex-SMP",
-            "play.vex-smp.com:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "gens",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "KenigCraft",
-            "mc.kenigcraft.ru:25565",
-            &[
-                "bosses",
-                "creative-mode",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "hardcore-mode",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "rpg",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Survival Fun",
             "survivalfun.net:25565",
             &[
@@ -15877,28 +14687,6 @@ mod catalog {
                 "roleplay",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "MineSky Survival",
-            "jogar.minesky.com.br:25565",
-            &[
-                "adventure-mode",
-                "bosses",
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
             ],
         ),
         (
@@ -16015,38 +14803,6 @@ mod catalog {
             ],
         ),
         (
-            "Precision PvP",
-            "mc.dvivaan.me:25565",
-            &[
-                "battle-royale",
-                "competitive",
-                "kitpvp",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pvp",
-            ],
-        ),
-        (
-            "SME MC",
-            "sme-mc.us:25565",
-            &[
-                "bedwars",
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "minigames",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "plots",
-                "pvp",
-                "smp",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Gempowered",
             "gempowered.us.to:25565",
             &[
@@ -16123,17 +14879,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
                 "world-resets",
-            ],
-        ),
-        (
-            "Glitched Seed",
-            "glitchedseed.hidenmc.com:25565",
-            &[
-                "anarchy",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -16225,22 +14970,6 @@ mod catalog {
             ],
         ),
         (
-            "Hidro City Rp",
-            "pentagon-aside.tun.ply.gg:25565",
-            &[
-                "bedwars",
-                "custom-content",
-                "economy",
-                "minigames",
-                "offline-mode",
-                "pvp",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "MALDITO SERVER",
             "malditosmc.com:25565",
             &[
@@ -16264,20 +14993,6 @@ mod catalog {
                 "pve",
                 "pvp",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Quacking SMP",
-            "quackingsmp.play.hosting:25565",
-            &[
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -16373,16 +15088,6 @@ mod catalog {
             ],
         ),
         (
-            "XL1126",
-            "82.156.215.91:21126",
-            &[
-                "custom-content",
-                "offline-mode",
-                "personal-worlds",
-                "vanilla-like",
-            ],
-        ),
-        (
             "ErrorSMP",
             "errorsmp.xyz:25565",
             &[
@@ -16407,18 +15112,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "枫落云诗",
-            "bj.mc.dnjcz.cn:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
                 "whitelisted",
             ],
@@ -16461,20 +15154,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "BuildMC",
-            "buildmc.top:25565",
-            &[
-                "economy",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -16646,45 +15325,6 @@ mod catalog {
             ],
         ),
         (
-            "madosy",
-            "madosy.opik.net:25565",
-            &[
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "MigosMc",
-            "migosmc.net:25565",
-            &[
-                "adventure-mode",
-                "anarchy",
-                "bedwars",
-                "competitive",
-                "creative-mode",
-                "crossplay",
-                "economy",
-                "hardcore-mode",
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "oneblock",
-                "pvp",
-                "roleplay",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "Stellovia No Grief SMP",
             "mc.stellovia.net:25565",
             &[
@@ -16713,43 +15353,6 @@ mod catalog {
             ],
         ),
         (
-            "CoffeeLand SMP",
-            "smp.coffeeprotect.cc:25565",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "economy",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "IonTect",
-            "go.iontect.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "world-resets",
-            ],
-        ),
-        (
             "Just SMP",
             "play.justsmp.nl:25565",
             &[
@@ -16769,22 +15372,6 @@ mod catalog {
             &["kitpvp", "pvp", "skyblock", "smp"],
         ),
         (
-            "Ederus Network - VIP GRATIS /VIP",
-            "mc.ederus.com:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "op",
-                "pve",
-                "pvp",
-            ],
-        ),
-        (
             "Potato's Café",
             "play.potato-smp.net:25565",
             &[
@@ -16795,30 +15382,6 @@ mod catalog {
                 "rpg",
                 "smp",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "BMC",
-            "roosevelt-bubble.tun.ply.gg:25565",
-            &[
-                "adventure-mode",
-                "anarchy",
-                "bedwars",
-                "classes",
-                "creative-mode",
-                "crossplay",
-                "economy",
-                "kitpvp",
-                "microgames",
-                "minigames",
-                "offline-mode",
-                "oneblock",
-                "plots",
-                "pvp",
-                "skyblock",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -16962,19 +15525,6 @@ mod catalog {
             "RosherCraft",
             "play.roshercraft.com.tr:25565",
             &["skyblock", "smp"],
-        ),
-        (
-            "FriendsSMP",
-            "friendssmpclub.play.hosting:25565",
-            &[
-                "anarchy",
-                "offline-mode",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
         ),
         (
             "SodaCraft",
@@ -17138,21 +15688,6 @@ mod catalog {
             ],
         ),
         (
-            "Forged SMP Season 2",
-            "212.100.172.180:19016",
-            &[
-                "bosses",
-                "custom-content",
-                "dungeons",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Oxygen SMP",
             "oxygen.playmc.cool:25565",
             &[
@@ -17235,11 +15770,6 @@ mod catalog {
             &["creative-mode", "creator-community", "plots", "social"],
         ),
         (
-            "NEVERMORE-MC",
-            "5.57.32.7:28241",
-            &["economy", "offline-mode", "pvp", "survival-mode", "teams"],
-        ),
-        (
             "Fenza",
             "play.fenza.fun:25565",
             &[
@@ -17276,32 +15806,6 @@ mod catalog {
                 "recording-smp",
                 "smp",
                 "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "LAUGH SCHOOL™ OFFICIAL SMP",
-            "mauritania-upstroke.tun.ply.gg:25565",
-            &[
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Lunarium",
-            "mc.lunarium.fun:25565",
-            &[
-                "bosses",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
                 "survival-mode",
                 "vanilla-like",
             ],
@@ -17493,18 +15997,6 @@ mod catalog {
             &["competitive", "custom-content", "minigames"],
         ),
         (
-            "DuduSMP",
-            "dudusmp.mines-server.space:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-            ],
-        ),
-        (
             "RelicMC",
             "relicmc.net:25565",
             &[
@@ -17583,19 +16075,6 @@ mod catalog {
             &["hardcore-mode", "pvp", "survival-mode", "vanilla-like"],
         ),
         (
-            "Viridian",
-            "viridian.vanilla.cool:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "SwiftGens",
             "gens.swiftservers.org:25565",
             &[
@@ -17622,21 +16101,6 @@ mod catalog {
                 "minigames",
                 "pvp",
                 "technical",
-            ],
-        ),
-        (
-            "Rajče.pro",
-            "mc.rajce.pro:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "custom-content",
-                "economy",
-                "network",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "teams",
             ],
         ),
         (
@@ -17683,23 +16147,6 @@ mod catalog {
             ],
         ),
         (
-            "Crown and Blade",
-            "crownandblade.my.pebble.host:25565",
-            &[
-                "bosses",
-                "classes",
-                "competitive",
-                "crossplay",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Elyndor OpenLore SMP",
             "mc.elyndorsmp.net:25565",
             &[
@@ -17729,20 +16176,6 @@ mod catalog {
             ],
         ),
         (
-            "WillowdaleMC",
-            "willowdalemc.net:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "CPvPIO",
             "cpvp.io:25565",
             &["kitpvp", "pvp", "social", "survival-mode", "teams"],
@@ -17762,11 +16195,6 @@ mod catalog {
                 "whitelisted",
             ],
         ),
-        (
-            "Metro Madrid Simulator",
-            "metromadrid.online:25565",
-            &["adventure-mode", "minigames", "offline-mode", "roleplay"],
-        ),
         ("Aetherblock", "play.aether-block.com:25565", &[]),
         (
             "L.O.S Prominence 2",
@@ -17779,20 +16207,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "modded",
-            ],
-        ),
-        (
-            "Royaume Empire",
-            "royaume-empire.duckdns.org:50000",
-            &[
-                "custom-content",
-                "economy",
-                "factions",
-                "neoforge",
-                "offline-mode",
-                "roleplay",
-                "teams",
-                "technical",
             ],
         ),
         (
@@ -17843,44 +16257,6 @@ mod catalog {
                 "skyblock",
                 "smp",
                 "survival-mode",
-            ],
-        ),
-        (
-            "GunMax",
-            "play.gunmax.org:25565",
-            &[
-                "bedwars",
-                "bosses",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "prison",
-                "pve",
-                "pvp",
-                "questing",
-                "roleplay",
-                "skyblock",
-                "social",
-                "towns",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "Mango SMP",
-            "mangosmp.play.hosting:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -17979,19 +16355,6 @@ mod catalog {
             ],
         ),
         (
-            "PoisonMC",
-            "play.nexovate.cloud:19101",
-            &[
-                "anarchy",
-                "economy",
-                "media",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-            ],
-        ),
-        (
             "create: your dreams.",
             "windows-suspense.gl.joinmc.link:25565",
             &[
@@ -18009,46 +16372,9 @@ mod catalog {
             &["network", "parkour", "pvp"],
         ),
         (
-            "DC商业梦想城",
-            "mc.mcrail.top:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pve",
-                "pvp",
-                "racing",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "towns",
-                "whitelisted",
-            ],
-        ),
-        (
             "OVMC",
             "play.ovmc.eu:25565",
             &["plots", "smp", "survival-mode"],
-        ),
-        (
-            "ISSMP",
-            "issmp.asia:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
         ),
         (
             "deicide",
@@ -18067,21 +16393,6 @@ mod catalog {
                 "pvp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "PRIMERLY",
-            "primerly.play.hosting:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "kitpvp",
-                "lifesteal",
-                "offline-mode",
-                "personal-worlds",
-                "pve",
-                "pvp",
-                "recording-smp",
             ],
         ),
         (
@@ -18114,22 +16425,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
             ],
-        ),
-        (
-            "2p2sk (2players2spawnkill)",
-            "wills-exif.tun.ply.gg:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Polynex CZ/SK",
-            "zx-spectrum.online:25565",
-            &["crossplay", "offline-mode", "pvp", "smp", "survival-mode"],
         ),
         (
             "WaggomiteSMP",
@@ -18221,37 +16516,6 @@ mod catalog {
             ],
         ),
         (
-            "Skyworld",
-            "mc.skywor1d.cn:25565",
-            &[
-                "creator-community",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "AMC Server",
-            "amc.falix.gg:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "economy",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "NINDEN",
             "play.ninden.net:25565",
             &[
@@ -18331,24 +16595,6 @@ mod catalog {
             ],
         ),
         (
-            "YADDU SMP",
-            "play.yaddu.net:6025",
-            &[
-                "creator-community",
-                "crossplay",
-                "dungeons",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "skyblock",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "FoxMC",
             "foxmc.online:25565",
             &[
@@ -18364,21 +16610,6 @@ mod catalog {
             "i2b2t: Indonesia 2Builders2Tools",
             "i2b2t.playwithbao.com:25565",
             &["anarchy", "crossplay", "pvp"],
-        ),
-        (
-            "StarMC Network",
-            "starmc.es:25565",
-            &[
-                "custom-content",
-                "dungeons",
-                "economy",
-                "network",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "survival-mode",
-            ],
         ),
         (
             "Kroonlanden - Kingdom",
@@ -18420,19 +16651,6 @@ mod catalog {
                 "survival-mode",
                 "whitelisted",
                 "modded",
-            ],
-        ),
-        (
-            "SUNBOX",
-            "sunbox.vanilla.house:25565",
-            &[
-                "network",
-                "offline-mode",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -18482,24 +16700,6 @@ mod catalog {
             ],
         ),
         (
-            "PirateBattle",
-            "piratebattle.mineserver.xyz:36033",
-            &[
-                "competitive",
-                "custom-content",
-                "hardcore-mode",
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "prison",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "The Hearth",
             "vanilla.cinderworks.dev:25565",
             &[
@@ -18536,30 +16736,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
                 "whitelisted",
-            ],
-        ),
-        (
-            "DIGIMANIA",
-            "mc.digimania.win:25565",
-            &[
-                "creative-mode",
-                "creator-community",
-                "custom-content",
-                "economy",
-                "microgames",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "questing",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
             ],
         ),
         (
@@ -18607,22 +16783,6 @@ mod catalog {
                 "hardcore-mode",
                 "pvp",
                 "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "OscumaCraft",
-            "oscumacraft.com:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
                 "survival-mode",
                 "vanilla-like",
             ],
@@ -18687,31 +16847,6 @@ mod catalog {
             ],
         ),
         (
-            "GodlyWorld",
-            "godlyworld.mineserver.xyz:25565",
-            &[
-                "anarchy",
-                "bedwars",
-                "custom-content",
-                "economy",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "op",
-                "parkour",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "OneCraft",
             "onecraft.pw:25565",
             &["crossplay", "mmo", "smp", "survival-mode", "vanilla-like"],
@@ -18740,23 +16875,6 @@ mod catalog {
             ],
         ),
         (
-            "DawnWorld",
-            "dawnworld.mc-join.pro:25565",
-            &[
-                "economy",
-                "factions",
-                "media",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "KayKay's Beanies",
             "kaykaysbeanies.minekeep.gg:25565",
             &[
@@ -18765,18 +16883,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "world-resets",
-            ],
-        ),
-        (
-            "CrimsonSMP",
-            "crimsonsmp.usga.me:21852",
-            &[
-                "crossplay",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -18794,11 +16900,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
             ],
-        ),
-        (
-            "Blue Sky",
-            "mcsky.icu:25565",
-            &["offline-mode", "pvp", "survival-mode"],
         ),
         (
             "SteedsGate",
@@ -18857,17 +16958,6 @@ mod catalog {
             "nucifera",
             "play.nucifera.cc:25565",
             &["custom-content", "economy", "smp"],
-        ),
-        (
-            "DeathMC",
-            "mc.aleher.sbs:60010",
-            &[
-                "minigames",
-                "network",
-                "offline-mode",
-                "social",
-                "survival-mode",
-            ],
         ),
         (
             "MajoneySMP",
@@ -19013,35 +17103,6 @@ mod catalog {
         ),
         ("UNBOUND", "unboundmc.duckdns.org:25565", &[]),
         (
-            "🌿 ValoriaSMP",
-            "valoriasmp.minecraft.how:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "悦幻服务器",
-            "yh91.xin:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "WhitecapMC",
             "wcmc.usrx.space:25500",
             &[
@@ -19051,23 +17112,6 @@ mod catalog {
                 "pvp",
                 "smp",
                 "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Relic Network",
-            "rlcmc.top:25565",
-            &[
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
                 "survival-mode",
                 "teams",
                 "vanilla-like",
@@ -19268,49 +17312,6 @@ mod catalog {
             ],
         ),
         (
-            "Createland",
-            "mc.createland.pp.ua:25565",
-            &[
-                "classes",
-                "custom-content",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "pve",
-                "pvp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Nomad Anarchy",
-            "play.nomadanarchy.online:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "XoterSMP",
-            "xotersmp.my.pebble.host:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "towns",
-            ],
-        ),
-        (
             "Craft Creator",
             "auth.craftcreator.net:25565",
             &[
@@ -19350,24 +17351,6 @@ mod catalog {
             ],
         ),
         (
-            "MinePixel",
-            "minepixel.mine.fun:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "economy",
-                "factions",
-                "offline-mode",
-                "questing",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Drakense",
             "drakense.top:25565",
             &[
@@ -19397,53 +17380,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "modded",
-            ],
-        ),
-        (
-            "iKrimmmzzz's viewer smp",
-            "ikrimmzzz.orc.host:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "media",
-                "offline-mode",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "4R4E",
-            "4r4e.top:25565",
-            &[
-                "anarchy",
-                "creative-mode",
-                "creator-community",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Ender - SMP: An economy server",
-            "playendersmp.gbnodes.host:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
             ],
         ),
         (
@@ -19514,19 +17450,6 @@ mod catalog {
             ],
         ),
         (
-            "Elvyan SMP",
-            "play.elvan.space:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Kabyle World",
             "mc.jahus.net:54454",
             &[
@@ -19586,20 +17509,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "sth-strange",
-            "mc.sth-strange.top:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -19719,22 +17628,6 @@ mod catalog {
             ],
         ),
         (
-            "XSMP",
-            "xsmp.top:25565",
-            &[
-                "custom-content",
-                "keep-inventory",
-                "lifesteal",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "K5 NETWORK",
             "play.k5-network.net:25565",
             &[
@@ -19764,24 +17657,6 @@ mod catalog {
             ],
         ),
         (
-            "BanglaCube Network",
-            "play.banglacubemc.xyz:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "SMPMC",
             "play.smpmc.nl:25565",
             &["economy", "pve", "pvp", "questing", "smp", "survival-mode"],
@@ -19798,39 +17673,6 @@ mod catalog {
                 "roleplay",
                 "rpg",
                 "survival-mode",
-            ],
-        ),
-        (
-            "FUN_DN",
-            "omt.rainplay.cn:15421",
-            &[
-                "competitive",
-                "custom-content",
-                "keep-inventory",
-                "lifesteal",
-                "microgames",
-                "minigames",
-                "mmo",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Jsn Lifesteal",
-            "jsnlifesteal.play.hosting:25565",
-            &[
-                "anarchy",
-                "lifesteal",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         ("The Wonder Project", "play.twp.lol:25565", &[]),
@@ -19896,17 +17738,6 @@ mod catalog {
                 "vanilla-like",
             ],
         ),
-        (
-            "Proton SMP",
-            "protonsmp.mc-dns.net:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
         ("Mazora Network", "mc.mazora.us:25565", &[]),
         (
             "Purple SMP",
@@ -19932,20 +17763,6 @@ mod catalog {
             "MineBash",
             "mc.bartbash.com:25565",
             &["minigames", "social", "survival-mode", "vanilla-like"],
-        ),
-        (
-            "anghaoyu16‘s server",
-            "anghaoyu16.top:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "personal-worlds",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
         ),
         (
             "ProxySocke",
@@ -19993,21 +17810,6 @@ mod catalog {
             &["crossplay", "pvp", "survival-mode", "world-resets"],
         ),
         (
-            "CosmoSMP",
-            "kosmosmp.aurorix.pro:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "ShaftRatsPvP | Classic Factions PvP",
             "shaftratspvp.globalelite.club:25565",
             &[
@@ -20032,26 +17834,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "CognitionCube",
-            "play.cognitioncube.net:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "economy",
-                "factions",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -20128,25 +17910,6 @@ mod catalog {
             ],
         ),
         (
-            "Atlantida",
-            "atlantown.top:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pve",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Healtz Craft | Brasil",
             "healtzcraft.com:25565",
             &[
@@ -20204,24 +17967,6 @@ mod catalog {
             ],
         ),
         (
-            "GrindMC",
-            "grindmc.enderman.cloud:25565",
-            &[
-                "bosses",
-                "competitive",
-                "dungeons",
-                "gens",
-                "media",
-                "minigames",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "skyblock",
-                "smp",
-            ],
-        ),
-        (
             "MaceSurvival",
             "macesurvival.net:25565",
             &[
@@ -20253,36 +17998,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "FangsWorld",
-            "m25.joinserver.xyz:25817",
-            &[
-                "classes",
-                "custom-content",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "hjfunnyMC",
-            "mc.hjfunny.site:25565",
-            &[
-                "keep-inventory",
-                "minigames",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -20333,54 +18048,6 @@ mod catalog {
                 "technical",
                 "towns",
             ],
-        ),
-        (
-            "Harborz MC",
-            "play.harborzmc.online:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "kitpvp",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "Alacity",
-            "alacity.org:25565",
-            &[
-                "anarchy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "VidMC",
-            "vidmc.net:25565",
-            &[
-                "adventure-mode",
-                "custom-content",
-                "media",
-                "offline-mode",
-                "personal-worlds",
-                "social",
-                "technical",
-            ],
-        ),
-        (
-            "dsmpServer",
-            "dsmp.nsdmc.top:25565",
-            &["economy", "offline-mode", "smp", "social", "survival-mode"],
         ),
         (
             "Alttari",
@@ -20459,21 +18126,6 @@ mod catalog {
             ],
         ),
         (
-            "Hocraft",
-            "play.hocdev.de:25565",
-            &[
-                "crossplay",
-                "economy",
-                "hardcore-mode",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
             "craftstorm",
             "craftstorm.gxy.pl:25565",
             &[
@@ -20538,16 +18190,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
             ],
-        ),
-        (
-            "ProstoTrainer",
-            "mc.prostotrainer.me:25565",
-            &["offline-mode", "pvp", "social", "world-resets"],
-        ),
-        (
-            "Saturn-X",
-            "play.saturn-x.space:25565",
-            &["minigames", "offline-mode", "pvp", "towns", "world-resets"],
         ),
         (
             ":3 SMP",
@@ -20740,57 +18382,9 @@ mod catalog {
             ],
         ),
         (
-            "DSMP Survival Server",
-            "dsmp.mcfwq.top:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Curious Globe City",
             "curiousglobesmp.minefort.com:25565",
             &["anarchy", "economy", "op", "plots", "roleplay", "smp"],
-        ),
-        (
-            "SMSMP",
-            "58.216.8.77:35000",
-            &[
-                "mmo",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
-            "永恒回忆(ForeverMemory)",
-            "forevermemory.top:25565",
-            &[
-                "adventure-mode",
-                "competitive",
-                "creator-community",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "whitelisted",
-            ],
         ),
         (
             "NarutoAdventures",
@@ -20870,18 +18464,6 @@ mod catalog {
             ],
         ),
         (
-            "ChaosMC",
-            "play.chaosmc.hu:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Tiroir France",
             "play.tiroir.xyz:25565",
             &[
@@ -20949,37 +18531,6 @@ mod catalog {
             ],
         ),
         (
-            "Kindome Network",
-            "kindo.me:25565",
-            &[
-                "adventure-mode",
-                "battle-royale",
-                "bedwars",
-                "competitive",
-                "creative-mode",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "kitpvp",
-                "media",
-                "microgames",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "personal-worlds",
-                "plots",
-                "pve",
-                "pvp",
-                "racing",
-                "social",
-                "teams",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
             "EQUINOX SMP",
             "play.equinoxsmp.xyz:25565",
             &[
@@ -21002,20 +18553,6 @@ mod catalog {
                 "survival-mode",
                 "technical",
                 "whitelisted",
-            ],
-        ),
-        (
-            "3d3k Anarchy",
-            "3d3k.org:25565",
-            &[
-                "anarchy",
-                "bedwars",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         ("Our Place", "185.207.164.206:19013", &[]),
@@ -21146,30 +18683,6 @@ mod catalog {
             ],
         ),
         (
-            "TwilightSMP",
-            "play.twilightsmp.in:25567",
-            &[
-                "anarchy",
-                "crossplay",
-                "economy",
-                "hardcore-mode",
-                "keep-inventory",
-                "kitpvp",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Aphreio's Anarchy",
             "aphreio.duckdns.org:25565",
             &[
@@ -21179,24 +18692,6 @@ mod catalog {
                 "pvp",
                 "social",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "SPCITCLUB MC Server",
-            "mc.spcitclub.me:25565",
-            &[
-                "crossplay",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "whitelisted",
             ],
         ),
         (
@@ -21230,19 +18725,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "Sakeva",
-            "mc.sakeva.net:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "network",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -21284,11 +18766,6 @@ mod catalog {
             ],
         ),
         (
-            "AnarchyOCE",
-            "51.161.199.82:50220",
-            &["anarchy", "offline-mode", "pvp", "smp"],
-        ),
-        (
             "123 pokemon go",
             "123pokemongoooo.modrinth.gg:25565",
             &[
@@ -21315,25 +18792,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "modded",
-            ],
-        ),
-        (
-            "Nexus0",
-            "mc.meldns.me:25565",
-            &[
-                "competitive",
-                "creative-mode",
-                "economy",
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "op",
-                "pvp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "world-resets",
             ],
         ),
         (
@@ -21410,21 +18868,6 @@ mod catalog {
             ],
         ),
         (
-            "OneBlock+",
-            "play.vudira.com:25565",
-            &[
-                "bosses",
-                "classes",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "pve",
-                "pvp",
-                "questing",
-                "social",
-            ],
-        ),
-        (
             "Splindux",
             "mc.splindux.com:25565",
             &[
@@ -21450,30 +18893,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "TechBlock.pl",
-            "play.techblock.pl:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "economy",
-                "hardcore-mode",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "personal-worlds",
-                "plots",
-                "pve",
-                "pvp",
-                "questing",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "towns",
             ],
         ),
         (
@@ -21528,24 +18947,6 @@ mod catalog {
             ],
         ),
         (
-            "DistopyCraft",
-            "distopycraft.minecraft.pe:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "economy",
-                "microgames",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "technical",
-            ],
-        ),
-        (
             "Lucky SMP",
             "play.luckysmp.org:25565",
             &["pvp", "smp", "social", "survival-mode"],
@@ -21576,17 +18977,6 @@ mod catalog {
             "🌐 SMP Network",
             "smp-network.thefoxcraft.de:25565",
             &["creator-community", "network", "smp"],
-        ),
-        (
-            "DestrixNetwork",
-            "mc.destrix.pw:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
         ),
         (
             "McGround TechnoMagicRPG #1",
@@ -21704,23 +19094,6 @@ mod catalog {
             &["competitive", "creative-mode", "minigames", "skyblock"],
         ),
         (
-            "FaultSMP",
-            "185.207.164.18:19000",
-            &[
-                "bosses",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "rpg",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Unstable Sky",
             "skysmps.xyz:25565",
             &[
@@ -21731,47 +19104,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "WhiteFantasy",
-            "whitefantasy.cn:25565",
-            &["adventure-mode", "custom-content", "offline-mode", "social"],
-        ),
-        (
-            "PureVanilla SMP",
-            "purevanillasmp.xyz:25565",
-            &[
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "media",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "TTG SMP",
-            "ttgsmp.nodecraft.gg:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
             ],
         ),
         (
@@ -21897,18 +19229,6 @@ mod catalog {
                 "roleplay",
                 "rpg",
                 "teams",
-            ],
-        ),
-        (
-            "zenithmc",
-            "zenithmc.iddns.ir:25565",
-            &[
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -22079,40 +19399,9 @@ mod catalog {
             ],
         ),
         (
-            "The Lord SMP",
-            "thelord.smp.live:25565",
-            &[
-                "competitive",
-                "creator-community",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "social",
-                "teams",
-            ],
-        ),
-        (
             "ScaftSMP",
             "games.extrarack.in:25573",
             &["lifesteal", "survival-mode", "whitelisted"],
-        ),
-        (
-            "星落滩",
-            "uaxlt.xyz:25565",
-            &[
-                "bedwars",
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
-            ],
         ),
         (
             "Dragons Armonyx",
@@ -22136,49 +19425,6 @@ mod catalog {
                 "pvp",
                 "teams",
                 "world-resets",
-            ],
-        ),
-        (
-            "EraSMP",
-            "f1.foxter.top:25569",
-            &["custom-content", "offline-mode", "pve", "pvp", "smp"],
-        ),
-        (
-            "PokeBalta Turk Pixelmon",
-            "play.pokebalta.com.tr:25565",
-            &[
-                "bosses",
-                "competitive",
-                "creator-community",
-                "custom-content",
-                "dungeons",
-                "keep-inventory",
-                "media",
-                "mmo",
-                "offline-mode",
-                "plots",
-                "pokemon",
-                "pve",
-                "pvp",
-                "questing",
-                "social",
-                "teams",
-                "modded",
-            ],
-        ),
-        (
-            "WorldSkyline Lite",
-            "mc.worldskyline.cn:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -22377,23 +19623,6 @@ mod catalog {
             ],
         ),
         (
-            "ChilautOficial Network",
-            "mc.chilautoficial.es:25565",
-            &[
-                "anarchy",
-                "bedwars",
-                "creative-mode",
-                "economy",
-                "keep-inventory",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-            ],
-        ),
-        (
             "Fizzy PVP",
             "p.fizzypvp.scalacube.co:25565",
             &[
@@ -22445,22 +19674,6 @@ mod catalog {
                 "pve",
                 "pvp",
                 "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "A Multitude of Fools 小丑众",
-            "xczu.top:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "gens",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "rpg",
                 "survival-mode",
                 "vanilla-like",
             ],
@@ -22521,11 +19734,6 @@ mod catalog {
             ],
         ),
         (
-            "EeveePvP",
-            "play.eeveepvp.win:25565",
-            &["competitive", "kitpvp", "network", "offline-mode", "pvp"],
-        ),
-        (
             "UnstableHQ",
             "unstablehq.net:25565",
             &[
@@ -22550,24 +19758,6 @@ mod catalog {
                 "questing",
                 "social",
                 "teams",
-            ],
-        ),
-        (
-            "Keyfall Network",
-            "play.keyfall.network:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "dungeons",
-                "keep-inventory",
-                "mmo",
-                "offline-mode",
-                "personal-worlds",
-                "recording-smp",
-                "rpg",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -22617,33 +19807,6 @@ mod catalog {
                 "pvp",
                 "questing",
                 "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "屯人服RE",
-            "trf.506521.xyz:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "MineTop",
-            "play.minetop.in:25565",
-            &[
-                "bedwars",
-                "factions",
-                "lifesteal",
-                "media",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "smp",
-                "social",
                 "teams",
             ],
         ),
@@ -22704,7 +19867,6 @@ mod catalog {
             "play.morukcraft.com:25565",
             &["gens", "pvp", "teams"],
         ),
-        ("SenkoL", "37.53.90.182:25566", &["offline-mode", "smp"]),
         (
             "LIFEA MC",
             "play.lifeamc.fun:25565",
@@ -22717,23 +19879,6 @@ mod catalog {
                 "creator-community",
                 "custom-content",
                 "personal-worlds",
-                "social",
-            ],
-        ),
-        (
-            "LeftyPvP",
-            "play.leftypvp.net:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "dungeons",
-                "keep-inventory",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "rpg",
-                "smp",
                 "social",
             ],
         ),
@@ -22791,43 +19936,9 @@ mod catalog {
             ],
         ),
         (
-            "LifeSteal SMP Lite",
-            "lifestealsmp.2bd.net:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
             "idk smp",
             "radiant-crossbow884.modrinth.gg:25565",
             &["custom-content", "pvp", "smp", "survival-mode", "teams"],
-        ),
-        (
-            "SoupSMP",
-            "soupsmp.xyz:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
         ),
         (
             "WardenMC",
@@ -22895,18 +20006,6 @@ mod catalog {
             ],
         ),
         (
-            "the Paper Server",
-            "yuanbaba.net:25565",
-            &[
-                "competitive",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "AtlasMC",
             "play.theatlasmc.net:25565",
             &[
@@ -22950,23 +20049,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "YWC Server",
-            "ywc.8mc.top:25565",
-            &[
-                "anarchy",
-                "economy",
-                "gens",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "rpg",
-                "social",
-                "survival-mode",
             ],
         ),
         (
@@ -23224,26 +20306,6 @@ mod catalog {
             ],
         ),
         (
-            "SM.SMP",
-            "82.156.207.194:25565",
-            &["mmo", "offline-mode", "smp"],
-        ),
-        (
-            "Grevil Craft",
-            "grevil.playit.plus:25565",
-            &[
-                "economy",
-                "factions",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "YugiSmp",
             "yugismp.net:25565",
             &[
@@ -23309,20 +20371,6 @@ mod catalog {
                 "survival-mode",
                 "towns",
                 "modded",
-            ],
-        ),
-        (
-            "CrawFordSMP",
-            "play.abyssxcrawford.one:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -23424,18 +20472,6 @@ mod catalog {
             ],
         ),
         (
-            "Klukva.xyz",
-            "mc.klukva.xyz:25565",
-            &[
-                "adventure-mode",
-                "offline-mode",
-                "parkour",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Basically Broke Network",
             "play.lovechaos.net:25565",
             &[
@@ -23465,19 +20501,6 @@ mod catalog {
                 "technical",
                 "vanilla-like",
                 "world-resets",
-            ],
-        ),
-        (
-            "Amethyst Community",
-            "mc.amethystcommunity.net:25565",
-            &[
-                "lifesteal",
-                "minigames",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "smp",
-                "vanilla-like",
             ],
         ),
         (
@@ -23629,20 +20652,6 @@ mod catalog {
             ],
         ),
         (
-            "WASD MC",
-            "play.wasdmc.fun:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "economy",
-                "kitpvp",
-                "network",
-                "offline-mode",
-                "pvp",
-                "social",
-            ],
-        ),
-        (
             "WoodSMP",
             "below-identical.joinmc.link:25565",
             &[
@@ -23671,24 +20680,6 @@ mod catalog {
             "SundaySMP",
             "sundaysmp.fun:25565",
             &["crossplay", "economy", "pvp", "smp", "survival-mode"],
-        ),
-        (
-            "➔BanderCraft.com - Український сервер✙",
-            "mc.bandercraft.com:25565",
-            &[
-                "bosses",
-                "network",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "towns",
-                "vanilla-like",
-            ],
         ),
         (
             "Alura SMP",
@@ -23828,38 +20819,9 @@ mod catalog {
             ],
         ),
         (
-            "Oranges",
-            "mc.oranges.lt:25565",
-            &[
-                "anarchy",
-                "factions",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "apocalypticrpg",
             "87.76.193.23:25576",
             &["custom-content", "pve", "rpg"],
-        ),
-        (
-            "Ourcraft营造九州",
-            "yuncan.xyz:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pve",
-                "pvp",
-                "social",
-                "teams",
-                "vanilla-like",
-            ],
         ),
         (
             "CiberAnarchy",
@@ -23867,51 +20829,9 @@ mod catalog {
             &["anarchy", "crossplay", "pvp", "social"],
         ),
         (
-            "ArgentinaCS",
-            "45.235.98.41:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "offline-mode",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "SECTLCraft",
-            "sectlcraft.92mc.top:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "StitchSMP",
             "stitchsmp.net:25565",
             &["competitive", "crossplay", "economy", "pvp", "smp", "teams"],
-        ),
-        (
-            "QQALL",
-            "mc.qqall.ru:25565",
-            &[
-                "hardcore-mode",
-                "offline-mode",
-                "plots",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
         ),
         (
             "Meadow SMP",
@@ -23932,51 +20852,6 @@ mod catalog {
             ],
         ),
         (
-            "NexusPlay SMP",
-            "alternative-responding.gl.joinmc.link:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "Pinkoc",
-            "mc.pinkoc.top:25565",
-            &[
-                "classes",
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pvp",
-                "skyblock",
-                "survival-mode",
-            ],
-        ),
-        (
-            "永恒世界",
-            "1.mcyyy.com:25565",
-            &[
-                "classes",
-                "custom-content",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "rpg",
-                "survival-mode",
-                "whitelisted",
-            ],
-        ),
-        (
             "Vnland",
             "vnland.ddns.net:25565",
             &[
@@ -23989,18 +20864,6 @@ mod catalog {
                 "pvp",
                 "smp",
                 "social",
-            ],
-        ),
-        (
-            "StarDome Outpost Survival Server",
-            "124.221.137.70:10006",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
             ],
         ),
         (
@@ -24054,11 +20917,6 @@ mod catalog {
                 "teams",
                 "technical",
             ],
-        ),
-        (
-            "Welder Server",
-            "play.welder.qzz.io:6516",
-            &["bedwars", "offline-mode", "pvp", "smp", "survival-mode"],
         ),
         (
             "HamsterSMP",
@@ -24147,22 +21005,6 @@ mod catalog {
             "mc.novaopcj.eu.org:25565",
             &["smp", "survival-mode", "vanilla-like", "whitelisted"],
         ),
-        (
-            "DesertCraft",
-            "desertcraft.falix.gg:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "rpg",
-                "social",
-                "vanilla-like",
-            ],
-        ),
         ("CrazyCreative", "crazycreative.mcsh.io:25565", &["plots"]),
         (
             "ColiseumNW",
@@ -24244,11 +21086,6 @@ mod catalog {
             ],
         ),
         (
-            "小游戏服务器",
-            "softworld.xin:25565",
-            &["minigames", "offline-mode", "social"],
-        ),
-        (
             "Pebble Quest",
             "pebble.quest:25565",
             &[
@@ -24264,30 +21101,6 @@ mod catalog {
                 "skyblock",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "RiveMC",
-            "rivemc.xyz:25565",
-            &[
-                "adventure-mode",
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
             ],
         ),
         (
@@ -24427,23 +21240,6 @@ mod catalog {
             ],
         ),
         (
-            "ShariMC",
-            "shari.societics.xyz:25565",
-            &[
-                "adventure-mode",
-                "creator-community",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-            ],
-        ),
-        (
             "DangoSMP",
             "mc.dangocraftstudio.com:25565",
             &[
@@ -24479,24 +21275,6 @@ mod catalog {
             &["smp", "social", "survival-mode", "vanilla-like"],
         ),
         (
-            "Ocean SMP",
-            "play.oceansmp.online:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "economy",
-                "media",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "OrionMC",
             "orionmc.fun:25565",
             &[
@@ -24518,22 +21296,6 @@ mod catalog {
             "wbusmp",
             "play.wbusmp.xyz:25565",
             &["economy", "pvp", "smp"],
-        ),
-        (
-            "苦力怕服务器(Creeper Server)",
-            "mc15.yldw.net:15050",
-            &[
-                "creative-mode",
-                "custom-content",
-                "economy",
-                "gens",
-                "keep-inventory",
-                "offline-mode",
-                "plots",
-                "social",
-                "survival-mode",
-                "world-resets",
-            ],
         ),
         (
             "PixelSMP.dk",
@@ -24644,30 +21406,6 @@ mod catalog {
             &["anarchy", "pve", "pvp"],
         ),
         (
-            "Craft And Helps",
-            "craftandhelps.com:25565",
-            &[
-                "battle-royale",
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "dungeons",
-                "gens",
-                "minigames",
-                "mmo",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "pvp",
-                "questing",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
             "MerlMC",
             "play.merl.xyz:25565",
             &[
@@ -24731,29 +21469,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "竹青Azurea",
-            "zq.wdsjfwq.com:25565",
-            &[
-                "classes",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "microgames",
-                "minigames",
-                "mmo",
-                "offline-mode",
-                "parkour",
-                "plots",
-                "pve",
-                "questing",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -24830,11 +21545,6 @@ mod catalog {
             ],
         ),
         (
-            "Horizons Legends",
-            "horizonslegends.playsmp.xyz:25567",
-            &["crossplay", "economy", "offline-mode", "smp", "social"],
-        ),
-        (
             "GullyCraft",
             "gullycraft.net:25565",
             &[
@@ -24865,24 +21575,6 @@ mod catalog {
                 "racing",
                 "social",
                 "teams",
-            ],
-        ),
-        (
-            "Astrum",
-            "astrummc.net:25565",
-            &[
-                "battle-royale",
-                "classes",
-                "competitive",
-                "dungeons",
-                "kitpvp",
-                "media",
-                "minigames",
-                "offline-mode",
-                "op",
-                "parkour",
-                "pve",
-                "pvp",
             ],
         ),
         (
@@ -24920,40 +21612,6 @@ mod catalog {
             ],
         ),
         (
-            "LunarisMc",
-            "play.lunarismc.pro:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "gens",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "The Republic",
-            "therepublic.asia:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "VortixMC",
             "vortixmc.minecra.fr:25565",
             &["economy", "pvp", "smp", "social", "survival-mode", "teams"],
@@ -24976,23 +21634,6 @@ mod catalog {
             ],
         ),
         ("SoldSMP", "sold.mc.gg:25565", &["economy", "smp"]),
-        (
-            "TuoYuYaoYunXuanQi",
-            "mcnorth.server.tuoyu.ink:32203",
-            &[
-                "crossplay",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
         (
             "Limitmc",
             "play.limitmc.net:25565",
@@ -25028,44 +21669,6 @@ mod catalog {
             &["smp"],
         ),
         (
-            "rencai2912-server",
-            "play.simpfun.cn:26174",
-            &[
-                "anarchy",
-                "mmo",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "technical",
-            ],
-        ),
-        (
-            "星落伺服器",
-            "play.starhubmc.org:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "parkour",
-                "plots",
-                "questing",
-                "social",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
-            "RestSmp",
-            "play.tiers.rest:25565",
-            &[
-                "custom-content",
-                "lifesteal",
-                "offline-mode",
-                "op",
-                "social",
-                "teams",
-            ],
-        ),
-        (
             "Create Aero SMP Server",
             "casmp.kinetic.host:25565",
             &[
@@ -25080,11 +21683,6 @@ mod catalog {
                 "whitelisted",
                 "modded",
             ],
-        ),
-        (
-            "KenKin我的世界群组服务器",
-            "mc.kenkin.cn:25565",
-            &["offline-mode", "social", "vanilla-like", "whitelisted"],
         ),
         (
             "[26.3]Breeze Plains微风原野-纯生存服务器",
@@ -25110,22 +21708,6 @@ mod catalog {
             ],
         ),
         (
-            "BakaPotato",
-            "bakapotato.com:25565",
-            &[
-                "gens",
-                "keep-inventory",
-                "offline-mode",
-                "plots",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "CherrySMP Network",
             "cherrysmp.net:25565",
             &["economy", "network", "pvp", "smp", "survival-mode"],
@@ -25140,24 +21722,6 @@ mod catalog {
                 "teams",
                 "technical",
                 "modded",
-            ],
-        ),
-        (
-            "Asketmc RPG",
-            "asketmc.com:25565",
-            &[
-                "bosses",
-                "classes",
-                "custom-content",
-                "dungeons",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "questing",
-                "roleplay",
-                "rpg",
-                "survival-mode",
-                "towns",
             ],
         ),
         (
@@ -25269,21 +21833,6 @@ mod catalog {
             ],
         ),
         (
-            "semicraft.su",
-            "45.157.232.7:21015",
-            &[
-                "competitive",
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "TofuSMP",
             "tofusmp.my.id:25565",
             &[
@@ -25371,26 +21920,6 @@ mod catalog {
             &["economy", "plots", "pve", "pvp"],
         ),
         (
-            "CreeperMC",
-            "play.creepermc.in:25565",
-            &[
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "kitpvp",
-                "media",
-                "minigames",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Boom Network",
             "play.boommc.net:25565",
             &[
@@ -25418,38 +21947,7 @@ mod catalog {
                 "technical",
             ],
         ),
-        (
-            "Pure Anarchy",
-            "anarchy.smilerryan.com:25565",
-            &[
-                "anarchy",
-                "offline-mode",
-                "personal-worlds",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
         ("KryxMC", "play.kryxmc.com:25565", &["pvp"]),
-        (
-            "SimpMC",
-            "simpmc.org:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
         (
             "LavaSMP",
             "play.lavasmp.net:25565",
@@ -25507,20 +22005,6 @@ mod catalog {
             ],
         ),
         (
-            "Unnamed really cool community Server",
-            "golf-dramatic.gl.joinmc.link:25565",
-            &[
-                "creative-mode",
-                "creator-community",
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "technical",
-                "towns",
-                "modded",
-            ],
-        ),
-        (
             "Frontier SMP",
             "frontier-smp.net:25565",
             &[
@@ -25531,41 +22015,6 @@ mod catalog {
                 "recording-smp",
                 "smp",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "PurplePavilion - 紫气阁",
-            "mcppl.top:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
-            "HorizonFrontier",
-            "mc.modkrate.com:25565",
-            &[
-                "classes",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -25637,27 +22086,6 @@ mod catalog {
             ],
         ),
         (
-            "AXELMC",
-            "play.axelmc.qzz.io:25576",
-            &[
-                "competitive",
-                "creator-community",
-                "economy",
-                "kitpvp",
-                "media",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-            ],
-        ),
-        (
             "EywaMC",
             "play.eywamc.com:25565",
             &[
@@ -25673,21 +22101,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "javaisland",
-            "javaisland.cn:25565",
-            &[
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "plots",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -25752,18 +22165,6 @@ mod catalog {
                 "survival-mode",
                 "technical",
                 "modded",
-            ],
-        ),
-        (
-            "Rafer",
-            "mcfriends666.com:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -25894,21 +22295,6 @@ mod catalog {
             ],
         ),
         (
-            "TofeMC",
-            "95.156.225.17:7555",
-            &[
-                "crossplay",
-                "economy",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "teams",
-            ],
-        ),
-        (
             "MULTISMP",
             "multismp.playit.pub:25565",
             &[
@@ -25995,24 +22381,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "BingshoCraft",
-            "play.bingsho.org:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
             ],
         ),
         (
@@ -26178,24 +22546,6 @@ mod catalog {
             ],
         ),
         (
-            "Elementrix",
-            "elementrix.xyz:25565",
-            &["crossplay", "economy", "offline-mode", "pvp", "smp"],
-        ),
-        (
-            "方块物语 BI",
-            "fkwymc.top:25565",
-            &[
-                "custom-content",
-                "dungeons",
-                "offline-mode",
-                "plots",
-                "rpg",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "CobblePie",
             "cobblepie.mc.gg:25565",
             &[
@@ -26241,17 +22591,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "VaultCraft SMP",
-            "vaultcraftsmp.mcsh.io:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
                 "vanilla-like",
             ],
         ),
@@ -26500,27 +22839,6 @@ mod catalog {
             ],
         ),
         (
-            "Isla Chupinga",
-            "mc.islachupinga.lat:25565",
-            &[
-                "bosses",
-                "classes",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "keep-inventory",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "plots",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "Galaxity Network",
             "mc.galaxity.lol:25565",
             &[
@@ -26604,29 +22922,6 @@ mod catalog {
             &["anarchy", "pve", "pvp"],
         ),
         (
-            "IpacEL",
-            "visit.ipacel.cc:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "Juddho",
-            "juddho.fun:25565",
-            &["bedwars", "competitive", "minigames", "offline-mode", "pvp"],
-        ),
-        (
             "MineTownRP",
             "minetown.ru:25565",
             &[
@@ -26668,11 +22963,6 @@ mod catalog {
             "Vanta smp",
             "vantasmp.duckdns.org:25565",
             &["hardcore-mode", "pvp", "smp"],
-        ),
-        (
-            "Dreamscape",
-            "no.rainplay.cn:45072",
-            &["keep-inventory", "offline-mode", "survival-mode"],
         ),
         (
             "ChemyMC",
@@ -26893,20 +23183,6 @@ mod catalog {
             ],
         ),
         (
-            "PrimLand Legacy",
-            "primland.ru:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "NationCraft",
             "nationcraft.mcsh.io:25565",
             &[
@@ -27067,22 +23343,6 @@ mod catalog {
             ],
         ),
         (
-            "crystalfbft.org Earthsmp",
-            "play.crystalfbft.org:25565",
-            &[
-                "anarchy",
-                "custom-content",
-                "economy",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "ModFest 26!",
             "modfest2.pb4.eu:25565",
             &[
@@ -27107,16 +23367,6 @@ mod catalog {
                 "pvp",
                 "survival-mode",
                 "modded",
-            ],
-        ),
-        (
-            "InfiniteChill",
-            "mc.infinitechill.ru:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -27146,19 +23396,6 @@ mod catalog {
                 "questing",
                 "smp",
                 "teams",
-                "world-resets",
-            ],
-        ),
-        (
-            "InfinityPlay",
-            "go.infplay.ru:25565",
-            &[
-                "creative-mode",
-                "offline-mode",
-                "parkour",
-                "prison",
-                "pve",
-                "pvp",
                 "world-resets",
             ],
         ),
@@ -27208,24 +23445,6 @@ mod catalog {
                 "vanilla-like",
                 "whitelisted",
                 "world-resets",
-            ],
-        ),
-        (
-            "VIETMC",
-            "vietmc.net:25565",
-            &[
-                "battle-royale",
-                "competitive",
-                "hardcore-mode",
-                "keep-inventory",
-                "kitpvp",
-                "network",
-                "offline-mode",
-                "pvp",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "technical",
             ],
         ),
         (
@@ -27311,21 +23530,6 @@ mod catalog {
             ],
         ),
         (
-            "Debian Fan Club!",
-            "school-need.gl.joinmc.link:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "plots",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "The Penguins: Society Sunlit Valley",
             "sv.ihatemy.live:25565",
             &[
@@ -27337,20 +23541,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "modded",
-            ],
-        ),
-        (
-            "还未成功着陆的小阿斯的四不像整合包",
-            "s.xaqj.top:25565",
-            &[
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "survival-mode",
-                "teams",
-                "technical",
-                "whitelisted",
             ],
         ),
         (
@@ -27379,57 +23569,9 @@ mod catalog {
             ],
         ),
         (
-            "foleney",
-            "mc.foleney.net:25565",
-            &[
-                "competitive",
-                "creator-community",
-                "custom-content",
-                "media",
-                "network",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "CobbleAdventures",
             "cobbleadventures.com:25565",
             &["custom-content", "economy", "pokemon", "questing", "modded"],
-        ),
-        (
-            "PRO STUDIOS SERVER",
-            "play.prostudios.2bd.net:25565",
-            &[
-                "adventure-mode",
-                "competitive",
-                "creator-community",
-                "economy",
-                "hardcore-mode",
-                "kitpvp",
-                "lifesteal",
-                "media",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "recording-smp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "technical",
-            ],
         ),
         ("kablowpvp", "stableduels.feathermc.gg:25565", &["pvp"]),
         (
@@ -27461,24 +23603,6 @@ mod catalog {
             "playfinity.net:25565",
             &["pve", "rpg", "teams", "towns"],
         ),
-        (
-            "KZSC MuCk Server",
-            "mc.kzscmuck.cn:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
         ("清欢渡", "wzzj.cc.cd:25565", &["survival-mode"]),
         (
             "RareNation",
@@ -27507,24 +23631,6 @@ mod catalog {
                 "technical",
                 "vanilla-like",
                 "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
-            "SparkMC",
-            "play.spark-mc.eu:25565",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "factions",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "rpg",
-                "smp",
-                "teams",
                 "world-resets",
             ],
         ),
@@ -27651,65 +23757,11 @@ mod catalog {
             ],
         ),
         (
-            "AquaVoid",
-            "mc.aquavoid.pro:25565",
-            &[
-                "anarchy",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Illusion Network Cobblemon Server",
             "illusion.modded.fun:25565",
             &["custom-content", "pokemon", "modded"],
         ),
         ("PyroMC", "play.pyromc.fun:25565", &[]),
-        (
-            "CrucibleSMP",
-            "play.getcrucible.dev:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "Shardplex",
-            "mc.shardplex.ru:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "network",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "roleplay",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
         (
             "LurialCraft",
             "lurial.jogar.co:25565",
@@ -27805,17 +23857,6 @@ mod catalog {
             &["bedwars", "crossplay", "minigames", "rpg", "vanilla-like"],
         ),
         ("Paradoxmc", "paradoxmc.mcraft.pro:25565", &[]),
-        (
-            "Rift MC",
-            "play.game-24.org:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
         (
             "MegaCLS",
             "megacls.de:25565",
@@ -27983,23 +24024,6 @@ mod catalog {
             ],
         ),
         (
-            "AlyrionSMP",
-            "185.207.164.166:19011",
-            &[
-                "bosses",
-                "dungeons",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "roleplay",
-                "smp",
-                "social",
-                "teams",
-                "modded",
-            ],
-        ),
-        (
             "FlightCraft",
             "flightcraft.joinserver.xyz:25565",
             &[
@@ -28099,18 +24123,6 @@ mod catalog {
             &["keep-inventory", "plots", "smp", "survival-mode", "modded"],
         ),
         (
-            "Guap",
-            "guapfun.top:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "rpg",
-                "social",
-                "survival-mode",
-                "towns",
-            ],
-        ),
-        (
             "\"Hope Kingdom RPG Survival Server\"",
             "ambitious-enderpearl133.modrinth.gg:25565",
             &[
@@ -28200,11 +24212,6 @@ mod catalog {
             &["anarchy", "survival-mode", "technical", "vanilla-like"],
         ),
         (
-            "RadSMP",
-            "play.radsmp.net:25565",
-            &["anarchy", "network", "offline-mode"],
-        ),
-        (
             "RoyalPixels",
             "royalpixels.de:25565",
             &[
@@ -28229,24 +24236,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "The vital trade",
-            "olds-traveling.tun.ply.gg:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "lifesteal",
-                "microgames",
-                "offline-mode",
-                "oneblock",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -28381,17 +24370,6 @@ mod catalog {
             &["pve", "smp", "social", "survival-mode", "vanilla-like"],
         ),
         (
-            "NikoCraft",
-            "mc.nikosmp.ru:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Evolya",
             "play-evolya.fr:25565",
             &[
@@ -28419,31 +24397,6 @@ mod catalog {
                 "rpg",
                 "skyblock",
                 "smp",
-                "teams",
-            ],
-        ),
-        (
-            "MongolVibes",
-            "mnvibes.org:25565",
-            &[
-                "crossplay",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
-            "MineFuture",
-            "minefuture.cr4ft.online:25565",
-            &[
-                "competitive",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
                 "teams",
             ],
         ),
@@ -28492,22 +24445,6 @@ mod catalog {
             ],
         ),
         (
-            "!~ The Purple Bakery SMP ~!",
-            "profile-trio.gl.joinmc.link:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "resonate smp",
             "bright-bee415.modrinth.gg:25565",
             &[
@@ -28520,56 +24457,9 @@ mod catalog {
             ],
         ),
         (
-            "Asteria-MC",
-            "asteria-mc.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "hardcore-mode",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Elysia Network",
             "play.elysianw.com:25565",
             &["economy", "minigames", "pvp", "skyblock", "survival-mode"],
-        ),
-        (
-            "UnionSquad",
-            "mc.unionsquad.su:25565",
-            &[
-                "custom-content",
-                "dungeons",
-                "economy",
-                "offline-mode",
-                "pve",
-                "questing",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "MineV",
-            "mc.minev.fun:25565",
-            &[
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
         ),
         ("xena.wtf", "xena.wtf:25565", &[]),
         (
@@ -28632,22 +24522,6 @@ mod catalog {
             &["crossplay", "media", "network", "smp", "survival-mode"],
         ),
         (
-            "Wireon",
-            "mc.wireon.su:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "plots",
-                "pve",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-                "modded",
-            ],
-        ),
-        (
             "RailCore official community server",
             "89.106.78.103:25565",
             &[
@@ -28687,26 +24561,6 @@ mod catalog {
                 "custom-content",
                 "hardcore-mode",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "DiosesMC",
-            "mc.diosesmc.net:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -28753,24 +24607,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "ASTMIX NETWORK",
-            "top.astmix.net:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "economy",
-                "media",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "personal-worlds",
-                "pve",
-                "pvp",
-                "teams",
-                "world-resets",
             ],
         ),
         (
@@ -28986,24 +24822,6 @@ mod catalog {
             ],
         ),
         (
-            "SMPServer",
-            "vip.bj.frp.one:35000",
-            &[
-                "adventure-mode",
-                "competitive",
-                "kitpvp",
-                "offline-mode",
-                "personal-worlds",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "StapleSMP",
             "before-booking.gl.joinmc.link:25565",
             &[
@@ -29143,40 +24961,9 @@ mod catalog {
             ],
         ),
         (
-            "DreamFox 🦊",
-            "dreamfox.fun:25565",
-            &[
-                "classes",
-                "custom-content",
-                "offline-mode",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "NatrixSMP",
             "natrixsmp.mcsh.io:25565",
             &["crossplay", "pve", "pvp", "smp", "social", "survival-mode"],
-        ),
-        (
-            "MCraft",
-            "himcraft.top:25650",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
         ),
         (
             "INDIAN MC",
@@ -29209,20 +24996,6 @@ mod catalog {
                 "skyblock",
                 "survival-mode",
                 "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "MajoKraft Worlds",
-            "mc.majokraft.com:25565",
-            &[
-                "economy",
-                "microgames",
-                "offline-mode",
-                "plots",
-                "questing",
-                "social",
-                "survival-mode",
                 "vanilla-like",
             ],
         ),
@@ -29319,34 +25092,6 @@ mod catalog {
             &["competitive", "network", "pvp"],
         ),
         (
-            "Shapeward",
-            "jogar.shapeward.com:25565",
-            &[
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "XRayMC",
-            "xraymc.top:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "VientianeWorld",
             "vientianeworld.astnx.com:25565",
             &["classes", "roleplay", "towns", "modded"],
@@ -29366,18 +25111,6 @@ mod catalog {
                 "lifesteal",
                 "pvp",
                 "survival-mode",
-            ],
-        ),
-        (
-            "CreateMore SMP",
-            "createmore.qzz.io:25565",
-            &[
-                "dungeons",
-                "offline-mode",
-                "op",
-                "smp",
-                "survival-mode",
-                "modded",
             ],
         ),
         (
@@ -29422,38 +25155,9 @@ mod catalog {
             &["plots", "pvp", "smp", "survival-mode"],
         ),
         (
-            "Salsamukk",
-            "play.salsamukk.in:25565",
-            &[
-                "crossplay",
-                "minigames",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-            ],
-        ),
-        (
             "LearnToCode with Python and Visualmodder",
             "server.visualmodder.org:25565",
             &["creator-community", "custom-content", "technical"],
-        ),
-        (
-            "DreamArk",
-            "play.dreamark.club:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "towns",
-                "vanilla-like",
-            ],
         ),
         (
             "FatalMC",
@@ -29475,24 +25179,6 @@ mod catalog {
                 "survival-mode",
                 "towns",
                 "whitelisted",
-            ],
-        ),
-        (
-            "Craft Powers",
-            "craftpowers.mcc.lk:25565",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "media",
-                "offline-mode",
-                "op",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -29543,21 +25229,6 @@ mod catalog {
             ],
         ),
         (
-            "SkyHipe",
-            "play.skyhipe.fun:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "economy",
-                "lifesteal",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "teams",
-            ],
-        ),
-        (
             "Ninjas PvP",
             "ninjaspvp.ddns.net:25565",
             &[
@@ -29572,68 +25243,6 @@ mod catalog {
             "One Life",
             "onelife.arcadia-mc.eu:25565",
             &["hardcore-mode", "social", "survival-mode", "vanilla-like"],
-        ),
-        (
-            "Nexaria Network",
-            "play.nexaria.fr:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
-            "DEWORLD",
-            "mc.deworld.su:25565",
-            &[
-                "anarchy",
-                "bosses",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "parkour",
-                "prison",
-                "pve",
-                "pvp",
-                "questing",
-                "social",
-                "world-resets",
-            ],
-        ),
-        (
-            "落英乡坊",
-            "may.mc6.cn:35294",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "TheGoodLands",
-            "play.thegoodlandsmc.it:25577",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-            ],
         ),
         (
             "Wingfall SMP",
@@ -29710,50 +25319,9 @@ mod catalog {
             ],
         ),
         (
-            "Dream Playz",
-            "play.dreamplayz.com:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "kitpvp",
-                "lifesteal",
-                "media",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "abyxcraft.net",
             "abyxcraft.net:25565",
             &["pve", "pvp", "smp", "vanilla-like"],
-        ),
-        (
-            "Dimension SMP Relight Edition | DiSMP",
-            "dimension.minehost.com.br:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
         ),
         (
             "Kodacraft",
@@ -29802,23 +25370,6 @@ mod catalog {
             ],
         ),
         (
-            "boberkasmp",
-            "boberka.mclan.ru:25565",
-            &[
-                "adventure-mode",
-                "anarchy",
-                "economy",
-                "lifesteal",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "TERRALIS",
             "foxhaven01.mc-join.me:25899",
             &[
@@ -29830,33 +25381,6 @@ mod catalog {
             ],
         ),
         (
-            "Paragon Network",
-            "paragonnetwork.us:25565",
-            &["crossplay", "economy", "offline-mode", "towns"],
-        ),
-        (
-            "La Naranja",
-            "mc.lanaranja.es:25565",
-            &[
-                "adventure-mode",
-                "creator-community",
-                "economy",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "personal-worlds",
-                "pvp",
-                "racing",
-                "rpg",
-                "social",
-                "survival-mode",
-                "technical",
-                "towns",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "The Trading Post",
             "play.thetradingpost.info:25565",
             &[
@@ -29865,19 +25389,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
                 "whitelisted",
-            ],
-        ),
-        (
-            "K Land",
-            "play.k-land.md:25565",
-            &[
-                "adventure-mode",
-                "crossplay",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "survival-mode",
             ],
         ),
         (
@@ -29979,29 +25490,6 @@ mod catalog {
             ],
         ),
         (
-            "ExtremeCraft",
-            "mod.extremecraft.net:25565",
-            &[
-                "anarchy",
-                "bosses",
-                "creative-mode",
-                "custom-content",
-                "economy",
-                "factions",
-                "kitpvp",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "skyblock",
-                "smp",
-                "survival-mode",
-                "towns",
-            ],
-        ),
-        (
             "Matrix Network",
             "play.matrixmc.in:25565",
             &[
@@ -30017,23 +25505,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "Planet Brunei Reborn SMP",
-            "planetbruneireborn.my.pebble.host:25565",
-            &[
-                "classes",
-                "crossplay",
-                "economy",
-                "network",
-                "offline-mode",
-                "pve",
-                "smp",
-                "social",
-                "towns",
-                "vanilla-like",
-                "world-resets",
             ],
         ),
         (
@@ -30087,30 +25558,6 @@ mod catalog {
             ],
         ),
         (
-            "Our-Island",
-            "play.ourisland.top:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "custom-content",
-                "keep-inventory",
-                "kitpvp",
-                "microgames",
-                "minigames",
-                "network",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "racing",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Sweden SMP",
             "swedensmp.net:25565",
             &[
@@ -30123,19 +25570,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "FutureServer",
-            "fs.lin114514.top:25565",
-            &[
-                "creative-mode",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "towns",
                 "vanilla-like",
             ],
         ),
@@ -30222,21 +25656,6 @@ mod catalog {
         ),
         ("UBGNETWORK", "play.ubgnetwork.fun:25565", &[]),
         (
-            "棉尾舟",
-            "mc1.xn--bgtt50a8xt.top:25565",
-            &[
-                "adventure-mode",
-                "bedwars",
-                "economy",
-                "hardcore-mode",
-                "keep-inventory",
-                "kitpvp",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-            ],
-        ),
-        (
             "ShoreSMP-beta",
             "shoreesmp.feathermc.gg:25565",
             &[
@@ -30262,21 +25681,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "草原探险服-小筑憩",
-            "mc.ypshidifu.cn:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -30334,21 +25738,6 @@ mod catalog {
             &["creative-mode", "custom-content", "social"],
         ),
         (
-            "SlimeBoysMC",
-            "mc.sbmc.space:25565",
-            &[
-                "network",
-                "offline-mode",
-                "recording-smp",
-                "skyblock",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Primalcraft",
             "play.primalcraft.fr:25565",
             &[
@@ -30373,22 +25762,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "towns",
-            ],
-        ),
-        (
-            "CraftPublic",
-            "qilk.de:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
             ],
         ),
         (
@@ -30472,23 +25845,6 @@ mod catalog {
             &["network", "roleplay"],
         ),
         (
-            "Vallorhold",
-            "vh.mclan.ru:25565",
-            &[
-                "network",
-                "offline-mode",
-                "op",
-                "plots",
-                "questing",
-                "roleplay",
-                "rpg",
-                "smp",
-                "survival-mode",
-                "teams",
-                "towns",
-            ],
-        ),
-        (
             "IllusiveMC Survival",
             "illusivemc.com:25565",
             &[
@@ -30499,21 +25855,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-                "world-resets",
-            ],
-        ),
-        (
-            "Shade Network",
-            "163.245.206.122:27092",
-            &[
-                "competitive",
-                "economy",
-                "network",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
                 "world-resets",
             ],
         ),
@@ -30598,11 +25939,6 @@ mod catalog {
                 "teams",
                 "vanilla-like",
             ],
-        ),
-        (
-            "One For All",
-            "play.oneforall.social:25565",
-            &["crossplay", "offline-mode", "smp", "vanilla-like"],
         ),
         (
             "Midnight Network",
@@ -30744,24 +26080,6 @@ mod catalog {
             ],
         ),
         (
-            "MegaNetwork",
-            "play.meganetwork.space:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "mmo",
-                "network",
-                "offline-mode",
-                "pve",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
             "Redlean SMP",
             "visual-races.gl.joinmc.link:25565",
             &[
@@ -30808,17 +26126,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Synapse",
-            "play.synapsesmp.xyz:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
                 "vanilla-like",
             ],
         ),
@@ -30894,23 +26201,6 @@ mod catalog {
             ],
         ),
         (
-            "QuickLand",
-            "quickland.net:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "personal-worlds",
-                "pve",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "GMGame",
             "fi.gmgame.world:25565",
             &[
@@ -30944,27 +26234,6 @@ mod catalog {
             &["kitpvp", "media", "minigames", "parkour", "plots", "pvp"],
         ),
         (
-            "AC Server",
-            "ahmedacserver.falix.gg:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "custom-content",
-                "lifesteal",
-                "offline-mode",
-                "op",
-                "prison",
-                "pvp",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "BoxPvP Network",
             "play.boxpvp.net:25565",
             &[
@@ -30976,29 +26245,6 @@ mod catalog {
                 "pvp",
                 "social",
                 "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "DexterCraft Network",
-            "dextercraft.tarohosting.com:33487",
-            &[
-                "anarchy",
-                "battle-royale",
-                "bosses",
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "microgames",
-                "minigames",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "pvp",
-                "roleplay",
                 "teams",
             ],
         ),
@@ -31135,18 +26381,6 @@ mod catalog {
             ],
         ),
         (
-            "NeX World",
-            "mcworld.nex-project.com:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Prismatic Earth",
             "prisma-earth.mc.gg:25565",
             &["economy", "smp", "survival-mode", "towns"],
@@ -31168,19 +26402,6 @@ mod catalog {
             ],
         ),
         (
-            "Carpincho MC",
-            "play.carpincho.es:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Astral Realms",
             "modrinth.astralrealms.fr:25565",
             &[
@@ -31195,18 +26416,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "Prototype SMP",
-            "mc.tmtec.top:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -31229,17 +26438,6 @@ mod catalog {
                 "teams",
                 "technical",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "My_World",
-            "mc.myworldmax.xyz:25565",
-            &[
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
             ],
         ),
         (
@@ -31298,46 +26496,6 @@ mod catalog {
             &["economy", "lifesteal", "pvp", "skyblock"],
         ),
         (
-            "HopeCity Non-profit Server",
-            "play.i8mc.net:25565",
-            &[
-                "anarchy",
-                "economy",
-                "gens",
-                "offline-mode",
-                "questing",
-                "skyblock",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "SPARK",
-            "spark-mc.ru:25565",
-            &[
-                "creator-community",
-                "crossplay",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "All of the Above",
             "alloftheabovemc.net:25565",
             &[
@@ -31348,18 +26506,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "5E5W",
-            "aam.rainplay.cn:42322",
-            &[
-                "anarchy",
-                "factions",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
             ],
         ),
         (
@@ -31508,20 +26654,6 @@ mod catalog {
             ],
         ),
         (
-            "Senky",
-            "mc.senky.ru:25565",
-            &[
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Wonderful Mc",
             "play.wonderfulmc.fun:25565",
             &[
@@ -31536,25 +26668,6 @@ mod catalog {
             ],
         ),
         ("PROGMINE", "play.progmine.pro:25565", &[]),
-        (
-            "Blue Network",
-            "bluecity.sennahosting.com:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
         (
             "soulblood.eu",
             "mc.soulblood.eu:25565",
@@ -31602,35 +26715,6 @@ mod catalog {
             ],
         ),
         (
-            "MinePeak",
-            "play.minepeak.org:25565",
-            &[
-                "adventure-mode",
-                "battle-royale",
-                "bedwars",
-                "bosses",
-                "competitive",
-                "economy",
-                "hardcore-mode",
-                "kitpvp",
-                "lifesteal",
-                "microgames",
-                "minigames",
-                "network",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "ITiRed - Vanila+",
             "rs1.joinserver.xyz:25846",
             &["crossplay", "custom-content", "pve", "vanilla-like"],
@@ -31649,24 +26733,6 @@ mod catalog {
             ],
         ),
         (
-            "Gà con MC",
-            "gaconmc.ddns.net:19033",
-            &[
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "media",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
             "FrostHex",
             "frosthex.com:25565",
             &[
@@ -31678,27 +26744,6 @@ mod catalog {
             ],
         ),
         ("Vanguardsmp", "vanguardsmp.ooguy.com:25565", &[]),
-        (
-            "ArctiX",
-            "78.30.225.95:25565",
-            &[
-                "anarchy",
-                "creator-community",
-                "custom-content",
-                "factions",
-                "media",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
         (
             "The Chronicles of Elium | Roleplay",
             "elium.aboba.host:25565",
@@ -31738,20 +26783,6 @@ mod catalog {
                 "questing",
                 "racing",
                 "teams",
-            ],
-        ),
-        (
-            "[苹果服务器小游戏]-apple mini-game",
-            "game.mc.mcapple.top:25565",
-            &[
-                "bedwars",
-                "factions",
-                "microgames",
-                "minigames",
-                "offline-mode",
-                "parkour",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -31901,20 +26932,6 @@ mod catalog {
             ],
         ),
         (
-            "Howling Twilight SMP",
-            "ht.momentariymodder.com:25565",
-            &[
-                "custom-content",
-                "lifesteal",
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "whitelisted",
-            ],
-        ),
-        (
             "HeavenCube",
             "play.heavencube.fr:25565",
             &[
@@ -31951,37 +26968,6 @@ mod catalog {
             "SMPRU",
             "smpru835.mcsh.io:25565",
             &["custom-content", "smp"],
-        ),
-        (
-            "RPM ROLEPLAY",
-            "play.rpmserver.com:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "roleplay",
-                "social",
-                "teams",
-            ],
-        ),
-        (
-            "little boy server",
-            "play.simpfun.cn:27122",
-            &[
-                "economy",
-                "gens",
-                "keep-inventory",
-                "minigames",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
         ),
         (
             "PrimeBlocks.net Server",
@@ -32108,22 +27094,6 @@ mod catalog {
             ],
         ),
         (
-            "Arctic Realms",
-            "mc.arcticbd.net:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "world-resets",
-            ],
-        ),
-        (
             "EnderCraft-Server",
             "mc.yxzhou.com:25565",
             &[
@@ -32161,11 +27131,6 @@ mod catalog {
                 "teams",
                 "vanilla-like",
             ],
-        ),
-        (
-            "Nihilium",
-            "nihilium.org:25565",
-            &["adventure-mode", "anarchy", "crossplay", "offline-mode"],
         ),
         (
             "SayreX",
@@ -32228,17 +27193,6 @@ mod catalog {
                 "towns",
                 "whitelisted",
                 "modded",
-            ],
-        ),
-        (
-            "Chengdu 18th Middle School SMP",
-            "18z.tmtec.top:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -32477,18 +27431,6 @@ mod catalog {
             ],
         ),
         (
-            "BearySMP",
-            "193.135.10.146:15273",
-            &[
-                "bosses",
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
             "FreshySMP",
             "freshysmp.playit.plus:25565",
             &[
@@ -32558,20 +27500,6 @@ mod catalog {
             ],
         ),
         (
-            "Twilight Hub",
-            "140.210.15.192:20261",
-            &[
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "FriendsMine",
             "mc.friendsmine.ru:25565",
             &[
@@ -32601,34 +27529,6 @@ mod catalog {
                 "towns",
                 "vanilla-like",
                 "whitelisted",
-            ],
-        ),
-        (
-            "方块传说LegendCraft",
-            "haiwai.mcfkcs.com:12345",
-            &[
-                "bosses",
-                "classes",
-                "dungeons",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "rpg",
-                "smp",
-                "survival-mode",
-            ],
-        ),
-        (
-            "10b10t",
-            "10b10t.com:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "survival-mode",
             ],
         ),
         (
@@ -32739,25 +27639,6 @@ mod catalog {
             ],
         ),
         (
-            "OwnVerse SMP",
-            "mc.ownverse.net:25565",
-            &[
-                "creator-community",
-                "economy",
-                "lifesteal",
-                "media",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "DiversityCraft",
             "diversitycraft.org:25565",
             &[
@@ -32849,29 +27730,6 @@ mod catalog {
                 "pvp",
                 "social",
             ],
-        ),
-        (
-            "MineDev",
-            "mc.iodev.xyz:25565",
-            &[
-                "bedwars",
-                "crossplay",
-                "offline-mode",
-                "oneblock",
-                "parkour",
-                "pvp",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "CubeServer",
-            "cd.4.frp.one:31204",
-            &["offline-mode", "social", "survival-mode"],
         ),
         (
             "NSRsmp",
@@ -33006,18 +27864,6 @@ mod catalog {
             &["keep-inventory", "survival-mode", "vanilla-like"],
         ),
         (
-            "Existential.org",
-            "51.79.225.48:25588",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
             "Mayamon",
             "157.85.93.247:24365",
             &[
@@ -33057,50 +27903,6 @@ mod catalog {
             ],
         ),
         (
-            "樱落小镇",
-            "mc.xucy.ltd:25565",
-            &[
-                "custom-content",
-                "economy",
-                "gens",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "infiniteMC",
-            "infuhc.cn:25565",
-            &[
-                "battle-royale",
-                "competitive",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "factions",
-                "hardcore-mode",
-                "kitpvp",
-                "media",
-                "microgames",
-                "minigames",
-                "mmo",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "recording-smp",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Nircraft",
             "play.nircraft.com:25565",
             &[
@@ -33116,20 +27918,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "towns",
-            ],
-        ),
-        (
-            "城南世界",
-            "mc.6mc.top:25565",
-            &[
-                "classes",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -33163,24 +27951,6 @@ mod catalog {
             "Primex Anarchy",
             "play.primexanarchy.net:25565",
             &["anarchy", "pvp", "teams"],
-        ),
-        (
-            "ZaKo Cat Girl Paradise",
-            "zako.fucku.top:25565",
-            &[
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "questing",
-                "rpg",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
         ),
         (
             "UcztaWron",
@@ -33361,40 +28131,6 @@ mod catalog {
             ],
         ),
         (
-            "AllCraft | Hello, New Journey",
-            "play.simpfun.cn:34161",
-            &[
-                "adventure-mode",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
-                "modded",
-            ],
-        ),
-        (
-            "桃源岛",
-            "taoyuanisle.cn:25565",
-            &[
-                "bosses",
-                "competitive",
-                "creator-community",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "plots",
-                "pvp",
-                "skyblock",
-                "teams",
-                "technical",
-            ],
-        ),
-        (
             "RoVeR23c",
             "impact-halifax.gl.joinmc.link:25565",
             &[
@@ -33469,11 +28205,6 @@ mod catalog {
             ],
         ),
         (
-            "aLFa_iq Community",
-            "alfa.playcraft.me:25565",
-            &["economy", "offline-mode", "social", "teams", "modded"],
-        ),
-        (
             "Stable SMP",
             "stablesmp.g-portal.rocks:25565",
             &[
@@ -33483,70 +28214,6 @@ mod catalog {
                 "questing",
                 "smp",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "梦落空羽",
-            "mlky.fun:25565",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "pve",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "Modern Craft",
-            "mdc-mc.cc.cd:25565",
-            &[
-                "classes",
-                "hardcore-mode",
-                "mmo",
-                "offline-mode",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "StarCloud",
-            "star.mcyunyun.xyz:25565",
-            &[
-                "adventure-mode",
-                "bosses",
-                "dungeons",
-                "economy",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "questing",
-                "rpg",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "SunWorld",
-            "mcbi.top:25565",
-            &[
-                "classes",
-                "competitive",
-                "kitpvp",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
             ],
         ),
         (
@@ -33600,40 +28267,6 @@ mod catalog {
                 "pvp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "HiBuild",
-            "hibuild.fun:25565",
-            &["crossplay", "offline-mode", "smp", "towns", "vanilla-like"],
-        ),
-        (
-            "SinusSMP",
-            "fel.sinussmp.com:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
-            "「鹿管天堂」纯生存服务器",
-            "luguan.9666.fun:20864",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -33697,43 +28330,6 @@ mod catalog {
                 "technical",
                 "towns",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "小破屋",
-            "mc.nekochio.com:25565",
-            &[
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "QuickMC",
-            "frp.quickso.cn:25565",
-            &[
-                "economy",
-                "lifesteal",
-                "mmo",
-                "offline-mode",
-                "pvp",
-                "teams",
-                "technical",
-            ],
-        ),
-        (
-            "福渊大陆纯净生存",
-            "fhymc.dpdns.org:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -33866,18 +28462,6 @@ mod catalog {
             &["kitpvp", "lifesteal", "network", "op", "pvp", "social"],
         ),
         (
-            "MineBlood Smp",
-            "play.mineblood.fun:25565",
-            &[
-                "custom-content",
-                "economy",
-                "lifesteal",
-                "offline-mode",
-                "smp",
-                "teams",
-            ],
-        ),
-        (
             "XCraft Survival | Mining Since 2013",
             "play.xcsurvival.com:25565",
             &[
@@ -33932,18 +28516,6 @@ mod catalog {
             &["anarchy", "competitive", "network", "pvp", "survival-mode"],
         ),
         (
-            "Minecraft NSD Anarchy Server",
-            "nsdmc.top:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "technical",
-            ],
-        ),
-        (
             "Harlon City Server",
             "play.harlonserver.net:25565",
             &[
@@ -33960,29 +28532,6 @@ mod catalog {
             "Hardcore_SMP",
             "play.waka.rest:25565",
             &["anarchy", "pvp", "smp"],
-        ),
-        (
-            "LastLife",
-            "lastlife.space:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "factions",
-                "media",
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "HYB服务器",
-            "mc.xn--awa-738dk72g8szm1b.fun:25565",
-            &["offline-mode", "pvp", "smp", "survival-mode", "whitelisted"],
         ),
         (
             "Ardonia",
@@ -34052,21 +28601,6 @@ mod catalog {
             &["economy", "pvp", "vanilla-like"],
         ),
         (
-            "AlrMc",
-            "mc.alr.re:25565",
-            &[
-                "custom-content",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "personal-worlds",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "ToxicLand [Demo]",
             "mc.toxic-land.ru:25565",
             &[
@@ -34113,36 +28647,6 @@ mod catalog {
             ],
         ),
         (
-            "Royalnetwork SMP",
-            "oyna.royalnetwork.xyz:25565",
-            &[
-                "anarchy",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "EndlessPixel",
-            "epmc.qzz.io:25565",
-            &[
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "questing",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "technical",
-                "vanilla-like",
-            ],
-        ),
-        (
             "EquinoxxMC",
             "mc.equinoxx.dev:25565",
             &[
@@ -34176,42 +28680,6 @@ mod catalog {
                 "pvp",
                 "skyblock",
                 "smp",
-                "teams",
-            ],
-        ),
-        (
-            "Mchanom",
-            "play.mchanom.org:25565",
-            &[
-                "economy",
-                "media",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "FATEX",
-            "play.fatex.eu:25565",
-            &[
-                "anarchy",
-                "bosses",
-                "classes",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "rpg",
-                "skyblock",
                 "teams",
             ],
         ),
@@ -34333,21 +28801,6 @@ mod catalog {
             ],
         ),
         (
-            "ReboundBox",
-            "reboundbox.lol:25565",
-            &[
-                "competitive",
-                "economy",
-                "kitpvp",
-                "offline-mode",
-                "op",
-                "pve",
-                "pvp",
-                "questing",
-                "teams",
-            ],
-        ),
-        (
             "Stigma Cobblemon",
             "stigmacobblemon.craft.gg:10044",
             &[
@@ -34364,23 +28817,6 @@ mod catalog {
                 "survival-mode",
                 "vanilla-like",
                 "modded",
-            ],
-        ),
-        (
-            "SKYCRAFT天空世界",
-            "mc.skycraft.cn:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "oneblock",
-                "questing",
-                "skyblock",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -34420,21 +28856,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "Blockmax",
-            "bmmc.cc:25565",
-            &[
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
             ],
         ),
         (
@@ -34493,27 +28914,6 @@ mod catalog {
                 "skyblock",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "ZeroWorlds",
-            "80.242.59.171:25565",
-            &[
-                "competitive",
-                "creator-community",
-                "economy",
-                "media",
-                "offline-mode",
-                "parkour",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
             ],
         ),
         (
@@ -34585,21 +28985,6 @@ mod catalog {
             ],
         ),
         (
-            "PixelPax SMP",
-            "play.pixelpax.my.id:25565",
-            &[
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "plots",
-                "rpg",
-                "smp",
-                "survival-mode",
-                "world-resets",
-            ],
-        ),
-        (
             "Plex SMP",
             "play.plexsmp.xyz:25565",
             &[
@@ -34609,24 +28994,6 @@ mod catalog {
                 "survival-mode",
                 "towns",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "SenkoSan",
-            "senkosan.c6t.ru:25565",
-            &[
-                "factions",
-                "network",
-                "offline-mode",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "world-resets",
             ],
         ),
         (
@@ -34725,22 +29092,6 @@ mod catalog {
                 "vanilla-like",
             ],
         ),
-        (
-            "Voxoria | Сезон VI. Мидсоммар",
-            "mc.vo-xo.com:25565",
-            &[
-                "network",
-                "offline-mode",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
         ("PvP Club", "mcpvp.club:25565", &["competitive", "pvp"]),
         (
             "StarSMP",
@@ -34776,11 +29127,6 @@ mod catalog {
                 "vanilla-like",
                 "modded",
             ],
-        ),
-        (
-            "Builtechraft SMP",
-            "btcsmp.tarquitet.com:25565",
-            &["offline-mode", "vanilla-like", "whitelisted", "modded"],
         ),
         (
             "MCEarth",
@@ -34843,18 +29189,6 @@ mod catalog {
                 "smp",
                 "survival-mode",
                 "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Untitled Smp",
-            "mc.minecraftsrv.site:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
                 "vanilla-like",
             ],
         ),
@@ -34961,19 +29295,6 @@ mod catalog {
             &["custom-content", "minigames", "pvp", "social", "modded"],
         ),
         (
-            "OBK",
-            "play.obk6.fun:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "Horizon Peaks SMP",
             "play.horizon-peaks.net:25565",
             &[
@@ -35001,21 +29322,6 @@ mod catalog {
                 "technical",
                 "vanilla-like",
                 "whitelisted",
-            ],
-        ),
-        (
-            "FishingServer",
-            "bj01.786913.xyz:25503",
-            &[
-                "keep-inventory",
-                "offline-mode",
-                "questing",
-                "social",
-                "survival-mode",
-                "teams",
-                "technical",
-                "vanilla-like",
-                "world-resets",
             ],
         ),
         (
@@ -35181,19 +29487,6 @@ mod catalog {
             ],
         ),
         (
-            "Senlimicy",
-            "senlimicy.joinserver.ru:25565",
-            &[
-                "custom-content",
-                "dungeons",
-                "offline-mode",
-                "survival-mode",
-                "teams",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "EtopiaMC.PL",
             "etopiamc.pl:25565",
             &[
@@ -35257,19 +29550,6 @@ mod catalog {
             "Purpsmp",
             "purpsmp.xyz:25565",
             &["media", "pve", "pvp", "smp"],
-        ),
-        (
-            "Capyland",
-            "mc.capyland.ru:25565",
-            &[
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
         ),
         (
             "NHC-smp",
@@ -35397,35 +29677,6 @@ mod catalog {
             ],
         ),
         (
-            "BonkMC",
-            "play.bonkmc.net:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "kitpvp",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
-            "Telacraft",
-            "telacraft.dreamkit.pro:25570",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Enthusia",
             "enthusia.net:25565",
             &[
@@ -35441,68 +29692,11 @@ mod catalog {
             ],
         ),
         (
-            "HoneySMP",
-            "mc.honeysmp.net:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "media",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "ValkenSMP",
             "valkensmp.mineserver.top:25565",
             &["crossplay", "pve", "pvp", "smp", "social", "vanilla-like"],
         ),
         ("OP-Games", "op-games.eu:25565", &["network", "smp"]),
-        (
-            "TerraMonic",
-            "play.terramonic.com:25565",
-            &[
-                "bedwars",
-                "competitive",
-                "creator-community",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "microgames",
-                "minigames",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "pvp",
-                "skyblock",
-                "social",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Luminto",
-            "lumintomc.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "media",
-                "offline-mode",
-                "pve",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
         (
             "FabiCraft",
             "fabicraft.net:25565",
@@ -35542,60 +29736,6 @@ mod catalog {
             "DreamMC",
             "play.dreammc.su:25565",
             &["economy", "pve", "smp", "vanilla-like"],
-        ),
-        (
-            "Crest MC",
-            "crestmc.xyz:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "economy",
-                "mmo",
-                "network",
-                "offline-mode",
-                "op",
-                "parkour",
-                "pvp",
-                "questing",
-                "smp",
-                "teams",
-            ],
-        ),
-        (
-            "Pokefun Server",
-            "play.pokefun.in:25565",
-            &[
-                "adventure-mode",
-                "bosses",
-                "creator-community",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "pokemon",
-                "rpg",
-                "smp",
-                "technical",
-                "modded",
-            ],
-        ),
-        (
-            "DismineSMP",
-            "play.disminesmp.qzz.io:25565",
-            &["competitive", "offline-mode", "recording-smp", "smp"],
-        ),
-        (
-            "CaveCity",
-            "mc.cavecity.space:25565",
-            &[
-                "battle-royale",
-                "kitpvp",
-                "lifesteal",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-            ],
         ),
         (
             "MineSeed",
@@ -35674,19 +29814,6 @@ mod catalog {
             &["crossplay", "economy", "network"],
         ),
         (
-            "ValeoMC",
-            "valeo-mc.org:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "plots",
-                "smp",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Yapcrafters",
             "mc.yapcrafters.com:25565",
             &[
@@ -35742,19 +29869,6 @@ mod catalog {
                 "vanilla-like",
                 "whitelisted",
                 "world-resets",
-            ],
-        ),
-        (
-            "Жопа слона",
-            "jopaslona.ru:25565",
-            &[
-                "bosses",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "offline-mode",
-                "pvp",
-                "vanilla-like",
             ],
         ),
         (
@@ -35872,21 +29986,6 @@ mod catalog {
             ],
         ),
         (
-            "VanillaSuper",
-            "vanillasuper.xyz:25565",
-            &[
-                "adventure-mode",
-                "offline-mode",
-                "pve",
-                "roleplay",
-                "smp",
-                "social",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "MCŽEMĖ",
             "mc.mczeme.lt:25565",
             &[
@@ -35902,22 +30001,6 @@ mod catalog {
                 "questing",
                 "social",
                 "teams",
-            ],
-        ),
-        (
-            "z8",
-            "z8mc.org:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -35971,23 +30054,6 @@ mod catalog {
             ],
         ),
         (
-            "Pray SMP",
-            "finishes-dui.tun.ply.gg:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "EpicSMP",
             "epicsmp.wayyyyysal.xyz:25565",
             &["recording-smp", "survival-mode", "vanilla-like"],
@@ -36007,34 +30073,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "True Vanilla FR",
-            "play.true-vanilla.fr:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Universo PokeNet",
-            "play.universopokenet.com:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "keep-inventory",
-                "offline-mode",
-                "pokemon",
-                "questing",
-                "survival-mode",
-                "modded",
             ],
         ),
         (
@@ -36205,20 +30243,6 @@ mod catalog {
             &["competitive", "minigames", "pvp"],
         ),
         (
-            "Ducky MC",
-            "play.duckymc.xyz:25565",
-            &[
-                "crossplay",
-                "economy",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Geofrontier",
             "java.geofrontier.net:25648",
             &[
@@ -36365,20 +30389,6 @@ mod catalog {
             ],
         ),
         (
-            "Vitality x AbyssLife",
-            "node-flexnodes.galeniusnodes.com:25565",
-            &[
-                "economy",
-                "hardcore-mode",
-                "offline-mode",
-                "pve",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "GamerTee Network",
             "gamertee.net:25565",
             &[
@@ -36443,41 +30453,6 @@ mod catalog {
             ],
         ),
         (
-            "FrydeMC",
-            "mc.fryde.org:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "oneblock",
-                "pvp",
-                "smp",
-            ],
-        ),
-        (
-            "喜欢喝果汁の公上一璇的服务器",
-            "aft521.top:25565",
-            &["crossplay", "network", "offline-mode", "survival-mode"],
-        ),
-        (
-            "Overworld︱主世界",
-            "play.simpfun.cn:17125",
-            &[
-                "creator-community",
-                "keep-inventory",
-                "offline-mode",
-                "personal-worlds",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
             "GommeHD.net",
             "mc.gommehd.net:25565",
             &[
@@ -36494,11 +30469,6 @@ mod catalog {
                 "social",
                 "teams",
             ],
-        ),
-        (
-            "QingYu SMP",
-            "202.189.10.108:20577",
-            &["offline-mode", "smp"],
         ),
         (
             "Nefald",
@@ -36556,64 +30526,10 @@ mod catalog {
             ],
         ),
         (
-            "ARC NETWORK",
-            "arc.sw4t.org:25565",
-            &[
-                "bedwars",
-                "creator-community",
-                "crossplay",
-                "economy",
-                "keep-inventory",
-                "minigames",
-                "network",
-                "offline-mode",
-                "prison",
-                "roleplay",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Avience",
             "avience.avn.gg:25565",
             &[
                 "economy",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
-            "Riftoria",
-            "play.riftoria.fr:25565",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "dungeons",
-                "factions",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "HardShard",
-            "mc.hardshard.ru:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "pve",
-                "roleplay",
                 "smp",
                 "social",
                 "survival-mode",
@@ -36632,11 +30548,6 @@ mod catalog {
                 "social",
                 "survival-mode",
             ],
-        ),
-        (
-            "starfall.smp",
-            "starfall.mcsh.io:25565",
-            &["anarchy", "competitive", "offline-mode", "pvp", "smp"],
         ),
         ("GalaxyRealms", "smp.galaxyrealms.com:25565", &["smp"]),
         (
@@ -36667,21 +30578,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "WebMC",
-            "play.webmc.fun:25565",
-            &[
-                "gens",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "skyblock",
-                "survival-mode",
-                "teams",
-                "technical",
             ],
         ),
         (
@@ -36736,22 +30632,6 @@ mod catalog {
                 "keep-inventory",
                 "smp",
                 "social",
-            ],
-        ),
-        (
-            "ZapMC Network",
-            "mc.flibat.com:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "lifesteal",
-                "network",
-                "offline-mode",
-                "questing",
-                "smp",
-                "social",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -36928,27 +30808,6 @@ mod catalog {
             ],
         ),
         (
-            "SVM SMP",
-            "svm.mcserver.host:25565",
-            &[
-                "adventure-mode",
-                "battle-royale",
-                "bosses",
-                "custom-content",
-                "keep-inventory",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Team Byte: The Backrooms",
             "play.thebackrooms.gg:25565",
             &[
@@ -37017,24 +30876,6 @@ mod catalog {
             ],
         ),
         (
-            "GlobMC",
-            "globmc.pl:25565",
-            &[
-                "bosses",
-                "custom-content",
-                "economy",
-                "mmo",
-                "network",
-                "offline-mode",
-                "parkour",
-                "plots",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
             "BuildFever",
             "buildfever.de:25565",
             &[
@@ -37072,22 +30913,6 @@ mod catalog {
             ],
         ),
         (
-            "Enchant.cz",
-            "enchant.cz:25565",
-            &[
-                "bedwars",
-                "economy",
-                "minigames",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "EZ",
             "ez-mc.de:25565",
             &[
@@ -37117,20 +30942,6 @@ mod catalog {
                 "vanilla-like",
                 "whitelisted",
                 "modded",
-            ],
-        ),
-        (
-            "ZCraft",
-            "play.zcraftmc.xyz:25565",
-            &[
-                "economy",
-                "lifesteal",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "teams",
             ],
         ),
         (
@@ -37218,21 +31029,6 @@ mod catalog {
             &["anarchy", "pve", "pvp", "survival-mode", "vanilla-like"],
         ),
         (
-            "DG NETWORK",
-            "java.dgnetwork.in:25565",
-            &[
-                "bedwars",
-                "keep-inventory",
-                "kitpvp",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "survival-mode",
-            ],
-        ),
-        (
             "Alinea SMP",
             "play.alinea.gg:25565",
             &[
@@ -37251,38 +31047,9 @@ mod catalog {
             ],
         ),
         (
-            "Rigid Anarchy",
-            "play.rigidanarchy.xyz:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-            ],
-        ),
-        (
             "QuadPractice",
             "play.quadprac.co.uk:25565",
             &["media", "pvp"],
-        ),
-        (
-            "MoonSmp",
-            "play.moonsmp.fun:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "economy",
-                "kitpvp",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
         ),
         (
             "Modern Beta SMP",
@@ -37294,43 +31061,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "Kuklinc Server",
-            "mc.kuklincserver.cz:25565",
-            &[
-                "adventure-mode",
-                "anarchy",
-                "battle-royale",
-                "bedwars",
-                "bosses",
-                "classes",
-                "competitive",
-                "creative-mode",
-                "creator-community",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "factions",
-                "gens",
-                "hardcore-mode",
-                "keep-inventory",
-                "kitpvp",
-                "lifesteal",
-                "media",
-                "microgames",
-                "minigames",
-                "mmo",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "op",
-                "parkour",
-                "personal-worlds",
-                "plots",
-                "pokemon",
             ],
         ),
         (
@@ -37399,24 +31129,6 @@ mod catalog {
             ],
         ),
         (
-            "Stevious",
-            "mc.stvworlds.win:25565",
-            &[
-                "creator-community",
-                "economy",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "whitelisted",
-            ],
-        ),
-        (
             "FoudreSMP",
             "smp.foudremagic.fr:25565",
             &[
@@ -37479,23 +31191,6 @@ mod catalog {
             ],
         ),
         (
-            "CIS",
-            "176.9.150.88:19136",
-            &[
-                "bosses",
-                "competitive",
-                "custom-content",
-                "dungeons",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "The Hobb Network",
             "play.hobbnetwork.net:25565",
             &["custom-content", "economy", "roleplay", "social", "towns"],
@@ -37546,27 +31241,6 @@ mod catalog {
                 "crossplay",
                 "custom-content",
                 "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "LiteBlock",
-            "liteblock.pl:25565",
-            &[
-                "custom-content",
-                "dungeons",
-                "economy",
-                "mmo",
-                "network",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "questing",
-                "rpg",
                 "smp",
                 "survival-mode",
                 "teams",
@@ -37632,21 +31306,6 @@ mod catalog {
             ],
         ),
         (
-            "Error101 SMP",
-            "185.107.193.229:25565",
-            &[
-                "anarchy",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "NEXUS SMP",
             "nexus.usga.me:25565",
             &[
@@ -37657,23 +31316,6 @@ mod catalog {
                 "vanilla-like",
                 "whitelisted",
                 "world-resets",
-            ],
-        ),
-        (
-            "The Empire",
-            "theempire.dat.gg:25565",
-            &[
-                "creative-mode",
-                "crossplay",
-                "economy",
-                "factions",
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
             ],
         ),
         (
@@ -37729,24 +31371,6 @@ mod catalog {
             ],
         ),
         (
-            "Bambooland",
-            "play.bambooland.fun:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-                "world-resets",
-            ],
-        ),
-        (
             "The Cherry Kingdom",
             "mc.cherrystech.xyz:25565",
             &[
@@ -37759,18 +31383,6 @@ mod catalog {
                 "towns",
                 "whitelisted",
                 "modded",
-            ],
-        ),
-        (
-            "MayLAN Craft",
-            "play.maylan.ru:25565",
-            &[
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -37787,18 +31399,6 @@ mod catalog {
             ],
         ),
         (
-            "FloraMC",
-            "play.floramc.club:25565",
-            &[
-                "bedwars",
-                "competitive",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-            ],
-        ),
-        (
             "Legacy SMP",
             "legacy-smp.uk:25565",
             &[
@@ -37807,20 +31407,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "Icabu",
-            "play.icabu.net:25565",
-            &[
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-                "modded",
             ],
         ),
         (
@@ -37895,23 +31481,6 @@ mod catalog {
             ],
         ),
         (
-            "Project Haven︱SMP",
-            "embermc.ultraga.me:19012",
-            &[
-                "economy",
-                "media",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Lunalite",
             "lunalite.net:25565",
             &["competitive", "kitpvp", "pvp", "social", "teams"],
@@ -37929,36 +31498,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "Venstone",
-            "java.venstone.xyz:25565",
-            &[
-                "crossplay",
-                "economy",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "modded",
-            ],
-        ),
-        (
-            "The Bomb SMP",
-            "89.25.30.233:18908",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
             ],
         ),
         (
@@ -37993,19 +31532,6 @@ mod catalog {
             "mc.emortal.dev:25565",
             &["minigames", "network", "pvp"],
         ),
-        (
-            "VALIOOON",
-            "valiooon.polit.day:25565",
-            &[
-                "adventure-mode",
-                "offline-mode",
-                "pve",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
         ("Endercraft", "endercraft.at:25565", &["survival-mode"]),
         (
             "thfproject",
@@ -38038,20 +31564,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "teams",
-            ],
-        ),
-        (
-            "Everbloom",
-            "everbloom.falix.me:20781",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "lifesteal",
-                "offline-mode",
-                "smp",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -38093,19 +31605,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "EvoxMC",
-            "play.evoxmc.net:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "lifesteal",
-                "offline-mode",
-                "oneblock",
-                "smp",
                 "teams",
             ],
         ),
@@ -38245,36 +31744,9 @@ mod catalog {
             ],
         ),
         (
-            "SentinelSMP",
-            "sentinelsmp.lol:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pvp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "world-resets",
-            ],
-        ),
-        (
             "Zorvain",
             "zorvain.com:25565",
             &["economy", "pvp", "smp", "social", "teams"],
-        ),
-        (
-            "Elunova",
-            "elunova.ru:25565",
-            &[
-                "custom-content",
-                "network",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
         ),
         (
             "LeoneMC",
@@ -38353,56 +31825,6 @@ mod catalog {
                 "pvp",
                 "questing",
                 "teams",
-            ],
-        ),
-        (
-            "2 Paws 1 Job",
-            "2p1j.org:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "my-net",
-            "mc.my-net.asia:3333",
-            &[
-                "bedwars",
-                "bosses",
-                "competitive",
-                "creative-mode",
-                "crossplay",
-                "economy",
-                "lifesteal",
-                "offline-mode",
-                "oneblock",
-                "plots",
-                "smp",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "FluffyCraft",
-            "fluffycraft.net:25565",
-            &[
-                "anarchy",
-                "creator-community",
-                "crossplay",
-                "network",
-                "offline-mode",
-                "recording-smp",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -38527,18 +31949,6 @@ mod catalog {
             ],
         ),
         (
-            "NasheySMP",
-            "nasheysmp.fun:25565",
-            &[
-                "competitive",
-                "crossplay",
-                "minigames",
-                "network",
-                "offline-mode",
-                "smp",
-            ],
-        ),
-        (
             "Precollivood",
             "mc.precollivood.ru:25565",
             &[
@@ -38554,20 +31964,6 @@ mod catalog {
             ],
         ),
         (
-            "Vanilla SMP",
-            "93.183.82.67:25565",
-            &[
-                "economy",
-                "offline-mode",
-                "pve",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Mythora",
             "mythora.de:25565",
             &[
@@ -38579,24 +31975,6 @@ mod catalog {
                 "smp",
                 "social",
                 "survival-mode",
-            ],
-        ),
-        (
-            "Vespera",
-            "play.vespera.fun:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -38761,20 +32139,6 @@ mod catalog {
             ],
         ),
         (
-            "СЧ — Сервер Чичи",
-            "play.serverchichi.online:25565",
-            &[
-                "custom-content",
-                "offline-mode",
-                "roleplay",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "RomixerX",
             "rx.romixerx.ru:25565",
             &[
@@ -38866,45 +32230,6 @@ mod catalog {
             &["competitive", "kitpvp", "pvp"],
         ),
         (
-            "Pixalis",
-            "pixalis.pl:25565",
-            &[
-                "adventure-mode",
-                "bosses",
-                "dungeons",
-                "economy",
-                "hardcore-mode",
-                "offline-mode",
-                "plots",
-                "pve",
-                "pvp",
-                "skyblock",
-                "smp",
-                "towns",
-                "modded",
-            ],
-        ),
-        (
-            "Valthorne RPG",
-            "playvalthorne.com:25565",
-            &[
-                "bosses",
-                "classes",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "mmo",
-                "offline-mode",
-                "pve",
-                "questing",
-                "roleplay",
-                "rpg",
-                "social",
-                "towns",
-            ],
-        ),
-        (
             "Minehub",
             "play.minehub.live:25565",
             &[
@@ -38917,20 +32242,6 @@ mod catalog {
                 "parkour",
                 "pvp",
                 "social",
-            ],
-        ),
-        (
-            "Counter-Mine 2",
-            "modrinth.cherry.pizza:25565",
-            &[
-                "competitive",
-                "custom-content",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "teams",
-                "modded",
             ],
         ),
         (
@@ -39028,23 +32339,6 @@ mod catalog {
             &["adventure-mode", "anarchy", "minigames", "network", "smp"],
         ),
         (
-            "JustMC",
-            "md.justmc.io:25565",
-            &[
-                "bedwars",
-                "creative-mode",
-                "custom-content",
-                "minigames",
-                "offline-mode",
-                "personal-worlds",
-                "plots",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "technical",
-            ],
-        ),
-        (
             "McManhunt Network",
             "mcmanhunt.com:25565",
             &[
@@ -39073,42 +32367,6 @@ mod catalog {
                 "survival-mode",
                 "teams",
                 "modded",
-            ],
-        ),
-        (
-            "Cyan Plex",
-            "play.cyanplex.net:25565",
-            &[
-                "bedwars",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "economy",
-                "keep-inventory",
-                "offline-mode",
-                "op",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-            ],
-        ),
-        (
-            "PHANDALIN",
-            "phandalin.in.ua:25565",
-            &[
-                "anarchy",
-                "bosses",
-                "classes",
-                "dungeons",
-                "hardcore-mode",
-                "mmo",
-                "offline-mode",
-                "rpg",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -39145,18 +32403,6 @@ mod catalog {
             "Ordinary SMP",
             "play.ordinary-smp.com:25565",
             &["smp", "survival-mode", "vanilla-like", "whitelisted"],
-        ),
-        (
-            "ZRX07 Craft",
-            "zrx07.enderman.cloud:25565",
-            &[
-                "crossplay",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "survival-mode",
-                "teams",
-            ],
         ),
         (
             "Santoria",
@@ -39304,24 +32550,6 @@ mod catalog {
             ],
         ),
         (
-            "FunTime",
-            "play.funtime.su:25565",
-            &[
-                "anarchy",
-                "custom-content",
-                "economy",
-                "hardcore-mode",
-                "kitpvp",
-                "media",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "social",
-                "survival-mode",
-            ],
-        ),
-        (
             "FadeMC",
             "fademc.gg:25565",
             &[
@@ -39369,24 +32597,6 @@ mod catalog {
             &["custom-content", "smp", "social"],
         ),
         (
-            "Project~Violette",
-            "jv.citory.net:25565",
-            &[
-                "creator-community",
-                "custom-content",
-                "offline-mode",
-                "roleplay",
-                "rpg",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "towns",
-                "vanilla-like",
-                "whitelisted",
-            ],
-        ),
-        (
             "RegrowthMC",
             "regrowthmc.net:25565",
             &[
@@ -39417,21 +32627,6 @@ mod catalog {
             &["smp", "social", "survival-mode", "whitelisted", "modded"],
         ),
         ("ReSalaoCraft", "resalaocraft.holy.gg:25565", &["modded"]),
-        (
-            "Netherite SMP",
-            "netherite.coldsmp.online:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "offline-mode",
-                "pvp",
-                "roleplay",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
         (
             "orbitalffa",
             "orbitalffa.smp.fan:25565",
@@ -39515,23 +32710,6 @@ mod catalog {
             ],
         ),
         (
-            "KingMC",
-            "sgp.kingmc.vn:25565",
-            &[
-                "battle-royale",
-                "custom-content",
-                "economy",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Minemist",
             "play.minemist.com:25565",
             &[
@@ -39543,20 +32721,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "towns",
-            ],
-        ),
-        (
-            "TheLastBurrow",
-            "thelastburrow.ru:30002",
-            &[
-                "creator-community",
-                "keep-inventory",
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -39638,18 +32802,6 @@ mod catalog {
             ],
         ),
         (
-            "Beam",
-            "beammc.su:25565",
-            &[
-                "custom-content",
-                "minigames",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Corpium",
             "play.corpium.net:25565",
             &[
@@ -39662,53 +32814,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "towns",
-            ],
-        ),
-        (
-            "BubbleMC",
-            "bubblemc.ru:25565",
-            &[
-                "custom-content",
-                "economy",
-                "gens",
-                "minigames",
-                "offline-mode",
-                "pvp",
-                "social",
-            ],
-        ),
-        (
-            "DSSX",
-            "mc.dssx.uk:25565",
-            &[
-                "anarchy",
-                "crossplay",
-                "minigames",
-                "network",
-                "offline-mode",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "Mythara.cz",
-            "mc.mythara.cz:25565",
-            &[
-                "bosses",
-                "crossplay",
-                "dungeons",
-                "economy",
-                "keep-inventory",
-                "network",
-                "offline-mode",
-                "oneblock",
-                "pve",
-                "questing",
-                "rpg",
-                "smp",
-                "survival-mode",
             ],
         ),
         (
@@ -39808,24 +32913,6 @@ mod catalog {
             ],
         ),
         (
-            "LollipopMC",
-            "cis.lollipopmc.net:25565",
-            &[
-                "bedwars",
-                "competitive",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pve",
-                "pvp",
-                "roleplay",
-                "smp",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "KoyoSMP",
             "play.furi.moe:25565",
             &[
@@ -39884,24 +32971,6 @@ mod catalog {
                 "minigames",
                 "questing",
                 "social",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "PurpurMC",
-            "oyna.purpurmc.com:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "network",
-                "offline-mode",
-                "pve",
-                "pvp",
-                "questing",
-                "smp",
-                "survival-mode",
-                "teams",
                 "vanilla-like",
             ],
         ),
@@ -40057,21 +33126,6 @@ mod catalog {
                 "survival-mode",
                 "towns",
                 "modded",
-            ],
-        ),
-        (
-            "SemiSurvivalCraft",
-            "mod.semisurvivalcraft.com:25565",
-            &[
-                "crossplay",
-                "network",
-                "offline-mode",
-                "plots",
-                "smp",
-                "social",
-                "survival-mode",
-                "towns",
-                "vanilla-like",
             ],
         ),
         (
@@ -40326,21 +33380,6 @@ mod catalog {
             ],
         ),
         (
-            "MCRybář",
-            "mcrybar.cz:25565",
-            &[
-                "adventure-mode",
-                "competitive",
-                "custom-content",
-                "minigames",
-                "network",
-                "offline-mode",
-                "pvp",
-                "social",
-                "vanilla-like",
-            ],
-        ),
-        (
             "ZNC SMP",
             "znc-smp.ddns.net:25565",
             &[
@@ -40418,17 +33457,6 @@ mod catalog {
             ],
         ),
         (
-            "Hopeland",
-            "83.136.233.231:2353",
-            &[
-                "offline-mode",
-                "smp",
-                "social",
-                "survival-mode",
-                "whitelisted",
-            ],
-        ),
-        (
             "Wynncraft MMORPG",
             "modrinth.wynncraft.com:25565",
             &[
@@ -40480,43 +33508,6 @@ mod catalog {
                 "skyblock",
                 "smp",
                 "survival-mode",
-            ],
-        ),
-        (
-            "❖ The LightMight",
-            "lightmight.ru:25565",
-            &[
-                "crossplay",
-                "dungeons",
-                "economy",
-                "network",
-                "offline-mode",
-                "parkour",
-                "prison",
-                "pvp",
-                "skyblock",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "MinePlus",
-            "mc.mineplus.network:25565",
-            &[
-                "bedwars",
-                "economy",
-                "media",
-                "minigames",
-                "network",
-                "offline-mode",
-                "parkour",
-                "pvp",
-                "smp",
-                "social",
-                "survival-mode",
-                "teams",
-                "vanilla-like",
             ],
         ),
         (
@@ -40612,41 +33603,6 @@ mod catalog {
             &["bedwars", "creative-mode", "network", "plots", "pvp"],
         ),
         (
-            "[FR] - Cobblemon Ultra",
-            "jouer.cobblemon-ultra.fr:25565",
-            &[
-                "bosses",
-                "economy",
-                "factions",
-                "keep-inventory",
-                "kitpvp",
-                "mmo",
-                "network",
-                "offline-mode",
-                "pokemon",
-                "pve",
-                "pvp",
-                "rpg",
-                "social",
-                "teams",
-                "towns",
-            ],
-        ),
-        (
-            "SynkaiMC",
-            "synkaimc.net:25565",
-            &[
-                "crossplay",
-                "network",
-                "offline-mode",
-                "pvp",
-                "roleplay",
-                "rpg",
-                "skyblock",
-                "social",
-            ],
-        ),
-        (
             "Pokecade - Cobblemon",
             "mod.pokecade.org:25565",
             &[
@@ -40693,18 +33649,6 @@ mod catalog {
                 "teams",
                 "towns",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "Astral | 7-й сезон сервер Майнкрафт",
-            "astral-mc.space:25565",
-            &[
-                "offline-mode",
-                "roleplay",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-                "whitelisted",
             ],
         ),
         (
@@ -40758,35 +33702,6 @@ mod catalog {
             ],
         ),
         (
-            "HuCraft",
-            "be.hucraft.love:35146",
-            &[
-                "competitive",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
-            "StarsMC SMP",
-            "starsmc.xin:25565",
-            &[
-                "anarchy",
-                "competitive",
-                "offline-mode",
-                "pvp",
-                "questing",
-                "recording-smp",
-                "smp",
-                "social",
-                "survival-mode",
-                "vanilla-like",
-            ],
-        ),
-        (
             "Stellarealm",
             "play.stellarealm.net:38695",
             &[
@@ -40802,20 +33717,6 @@ mod catalog {
                 "teams",
                 "towns",
                 "vanilla-like",
-            ],
-        ),
-        (
-            "M5LBSMP",
-            "play.m5lbsmp.com:25565",
-            &[
-                "crossplay",
-                "custom-content",
-                "economy",
-                "offline-mode",
-                "pvp",
-                "smp",
-                "social",
-                "teams",
             ],
         ),
         (
@@ -41209,23 +34110,6 @@ mod catalog {
                 "social",
                 "survival-mode",
                 "vanilla-like",
-                "modded",
-            ],
-        ),
-        (
-            "Cobblemon Emblem Z Server",
-            "emblemz.es:25565",
-            &[
-                "battle-royale",
-                "competitive",
-                "crossplay",
-                "custom-content",
-                "dungeons",
-                "keep-inventory",
-                "offline-mode",
-                "pokemon",
-                "smp",
-                "survival-mode",
                 "modded",
             ],
         ),
@@ -42055,15 +34939,16 @@ pub mod native {
         #[test]
         fn bundled_catalog_has_unique_valid_addresses() {
             let mut addresses = std::collections::HashSet::new();
-            for (_, address, _) in super::super::catalog::CURATED_SERVERS
+            for (_, address, tags) in super::super::catalog::CURATED_SERVERS
                 .iter()
                 .chain(super::super::catalog::DIRECTORY_SNAPSHOT)
                 .chain(super::super::catalog::MODRINTH_SNAPSHOT)
             {
                 assert!(core::address::parse(address).is_ok());
                 assert!(addresses.insert(core::address::key(address).unwrap()));
+                assert!(!tags.iter().any(|tag| core::query::offline_access_tag(tag)));
             }
-            assert_eq!(addresses.len(), 2835);
+            assert_eq!(addresses.len(), 2382);
         }
     }
 }

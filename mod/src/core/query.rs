@@ -1,5 +1,5 @@
 //! Pure AND filtering. Unknown numeric/status fields never satisfy a constraint.
-use crate::model::{AuthMode, Health, Server, Sort, Status, Tab, View};
+use crate::model::{Health, Server, Sort, Status, Tab, View};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 
@@ -28,9 +28,11 @@ pub struct Filters {
     pub region: String,
     pub group: String,
     pub favorites: bool,
-    pub auth: Option<AuthMode>,
-    /// Conservative offline-mode-only filter, independent of account handling.
-    pub joinable: bool,
+}
+
+pub fn offline_access_tag(tag: &str) -> bool {
+    let tag = tag.trim();
+    tag.eq_ignore_ascii_case("cracked") || tag.eq_ignore_ascii_case("offline-mode")
 }
 
 pub fn strip_formatting(s: &str) -> String {
@@ -51,8 +53,6 @@ pub fn matches(server: &Server, status: Option<&Status>, view: &View) -> bool {
     let f = &view.filters;
     if (view.tab == Tab::Favorites || f.favorites) && !m.favorite
         || view.tab == Tab::Recent && m.last_played == 0
-        || f.joinable && m.auth != AuthMode::Offline
-        || f.auth.is_some_and(|auth| auth != m.auth)
         || !f.group.is_empty() && !f.group.eq_ignore_ascii_case(&m.group)
         || !f.language.is_empty() && !f.language.eq_ignore_ascii_case(&m.language)
         || !f.region.is_empty() && !f.region.eq_ignore_ascii_case(&m.region)
@@ -209,7 +209,6 @@ mod tests {
         };
         server.metadata.tags = vec!["Survival".into(), "EU".into()];
         server.metadata.notes = "friends welcome".into();
-        server.metadata.auth = AuthMode::Offline;
         server.metadata.favorite = true;
         server.metadata.language = "de".into();
         server.metadata.region = "DE".into();
@@ -251,8 +250,8 @@ mod tests {
         assert_eq!(strip_formatting("§aHi §lthere§r!"), "Hi there!");
     }
     #[test]
-    fn every_filter_combines_and_unknown_is_not_joinable() {
-        let (mut s, p) = fixture();
+    fn filters_combine_and_unknown_status_does_not_match() {
+        let (s, p) = fixture();
         let mut v = View {
             filters: Filters {
                 online: Some(true),
@@ -267,16 +266,12 @@ mod tests {
                 language: "de".into(),
                 region: "DE".into(),
                 favorites: true,
-                joinable: true,
                 ..Filters::default()
             },
             ..View::default()
         };
         assert!(matches(&s, Some(&p), &v));
         assert!(!matches(&s, None, &v));
-        s.metadata.auth = AuthMode::Unknown;
-        assert!(!matches(&s, Some(&p), &v));
-        s.metadata.auth = AuthMode::Offline;
         v.filters.min_players = Some(6);
         assert!(!matches(&s, Some(&p), &v));
         v.filters.min_players = None;
@@ -375,10 +370,6 @@ mod tests {
             },
             Filters {
                 group: "other".into(),
-                ..Filters::default()
-            },
-            Filters {
-                auth: Some(AuthMode::Online),
                 ..Filters::default()
             },
         ];

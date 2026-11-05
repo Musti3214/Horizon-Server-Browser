@@ -96,8 +96,9 @@ for item in gallery:
     assert int.from_bytes(png[16:20], 'big') == 1920 and int.from_bytes(png[20:24], 'big') == 1080, item['file']
 servers = json.loads((DIST/'assets/servers.json').read_text(encoding='utf8'))['servers']
 assert len(servers) == len({s['address'].lower() for s in servers}) == 2835
-sha = hashlib.sha256((DIST/'downloads/server-browser-2.2.0.hnmod').read_bytes()).hexdigest()
-assert sha == (DIST/'downloads/SHA256SUMS.txt').read_text().split()[0]
+native = json.loads((ROOT/'releases.json').read_text(encoding='utf8'))['horizon']
+sha = hashlib.sha256((DIST/'downloads'/native['name']).read_bytes()).hexdigest()
+assert sha == native['sha256'] == (DIST/'downloads/SHA256SUMS.txt').read_text().split()[0]
 sitemap = ET.parse(DIST/'sitemap.xml').getroot()
 assert len(sitemap) == 24
 by_url={p.canonical:p for p in pages.values() if p.path!='404.html'}

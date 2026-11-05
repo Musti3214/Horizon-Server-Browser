@@ -1,16 +1,16 @@
 # Install Server Browser in Horizon
 
-Current release: **2.2.0**, Minecraft Java **26.3**. Tested on Windows x64.
+Current native release: **2.2.1**, Minecraft Java **26.3**. Tested on Windows x64.
 Use the official Horizon launcher and a separate instance for the first test.
 
 ## Install and build
 
 1. Download the `.hnmod` from the website. Verify its checksum against
-   `downloads/server-browser-2.2.0.sha256` when desired.
+   `downloads/server-browser-2.2.1.sha256` when desired.
 2. Open the selected instance's game folder. Put the single file in
    `horizon-native-mods`. Remove an older Server Browser copy from that folder
    after keeping a backup elsewhere. Leave unrelated mods alone.
-3. Open **Mods** in the launcher and turn **server_browser 2.2.0** on. A newly
+3. Open **Mods** in the launcher and turn **server_browser 2.2.1** on. A newly
    created instance may have the local mod switched off.
 4. Choose the ordinary **Build** action for the package's tested revision.
    The separate "rebuild on latest Nightly" action overrides that revision;

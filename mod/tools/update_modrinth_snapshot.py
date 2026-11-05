@@ -46,6 +46,8 @@ def main():
             if key in seen: continue
             seen.add(key)
             tags = [clean(t,64) for t in hit.get('categories',[])[:31] if isinstance(t,str)]
+            if any(tag.strip().casefold() in {"cracked", "offline-mode"} for tag in tags):
+                continue
             if java.get('content',{}).get('kind')=='modpack' and 'modded' not in tags: tags.append('modded')
             entries.append({'name':clean(hit.get('name') or parsed.hostname,256),'address':key,'tags':tags,'source':'https://modrinth.com/server/'+hit['slug']})
         pages.append({'offset':offset,'entries':len(hits),'total':data['total_hits']})

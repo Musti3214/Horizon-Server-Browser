@@ -68,7 +68,7 @@ impl PingService {
     pub fn new(concurrency: usize) -> std::io::Result<Self> {
         Self::with_probe(concurrency, Arc::new(ping))
     }
-    fn with_probe(concurrency: usize, probe: Arc<Probe>) -> std::io::Result<Self> {
+    pub(crate) fn with_probe(concurrency: usize, probe: Arc<Probe>) -> std::io::Result<Self> {
         let shared = Arc::new(Shared::default());
         let service = Self {
             lease: Arc::new(Lease {

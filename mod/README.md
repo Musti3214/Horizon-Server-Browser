@@ -1,10 +1,10 @@
-# Server Atlas 2.2.0 — native Horizon edition
+# Server Atlas 2.2.1 — native Horizon edition
 
-A native Rust multiplayer browser for Minecraft Java 26.3, using Horizon's official `.hnmod` mechanism. Version 2.2.0 is updated and tested on Horizon Nightly 2026-11-04 · 6475f62. Exact pins, checksums and test coverage are in VALIDATION.md.
+A native Rust multiplayer browser for Minecraft Java 26.3, using Horizon's official `.hnmod` mechanism. This update targets Horizon Nightly 2026-11-04 · 6475f62 and addresses the registry review of 2.2.0.
 
 ## Install
 
-1. Download `server-browser-2.2.0.hnmod` and choose a dedicated Horizon instance.
+1. Download `server-browser-2.2.1.hnmod` and choose a dedicated Horizon instance.
 2. Put this single file in the instance's `horizon-native-mods` folder. Keep a backup of an older version outside that folder and leave unrelated mods alone.
 3. Enable server_browser on the launcher's Mods page. Choose the ordinary native Build action, review the source/mod list and make the native-code trust decision yourself.
 4. Launch the instance after its build finishes and open Multiplayer.
@@ -15,9 +15,11 @@ Native mods are compiled into the game and run with your user permissions. Updat
 
 Minecraft-style buttons, compact translucent server rows, search, My Servers/Discover/Favorites/Recent/LAN views, status/version/ping/player filters, local tags/notes/groups, saved filter profiles, custom ordering, JSON/NBT import/export and Classic view. The persistent mod ID remains server_browser and unknown vanilla servers.dat fields are preserved.
 
-Public discovery uses Modrinth and minecraftserve.rs and includes a dated snapshot of 2,835 unique addresses. New settings enable it; an explicitly saved Off stays Off. Listing requests are independently throttled and cached; failed refreshes preserve usable prior data. Personal saved addresses, searches and notes are not sent to directory providers. Direct status requests contact the servers being checked. Connections and login use Horizon's implementation.
+Online discovery uses Modrinth and minecraftserve.rs after you confirm the privacy screen. Users upgrading from 2.2.0 also confirm once. Requests are throttled per provider and cached. Failed refreshes preserve usable results. Directory requests include public tag and version filters where supported. Personal saved addresses, searches and notes stay local.
 
-Feedback and public suggestions save local drafts. Automatic email delivery is not configured. Never embed a mail password or private management token. feedback-public.json supports a service's public submission key only.
+Discover sends direct status pings to visible rows and a small margin. Scrolling replaces queued probes with the new window. Automatic refresh checks that same window or the saved list, depending on the active tab. Discover excludes listings marked for offline access. Account mode remains a private note on saved servers. Connections and login use Horizon's implementation.
+
+Feedback and public server suggestions save local drafts. The **☕ Ko-fi** toolbar button opens `https://ko-fi.com/foryou41` in your default browser.
 
 ## Build and review
 

@@ -3,7 +3,6 @@
 //! for every frame. All test runs must use a scratch game home.
 mod draw;
 mod forms;
-mod feedback;
 mod online;
 #[cfg(test)]
 mod tests;
@@ -111,7 +110,6 @@ enum Modal {
 struct Runtime {
     service: PingService,
     directory: online::Directory,
-    feedback: feedback::Sender,
     statuses: HashMap<String, Status>,
     history: HashMap<String, VecDeque<u64>>,
     icons: RefCell<HashMap<String, (u64, Option<std::sync::Arc<Vec<u8>>>)>>,
@@ -123,13 +121,27 @@ struct Runtime {
     detail_scroll: Scroll,
     detail_height: f32,
     smooth: f32,
-    prioritized_row: usize,
+    ping_window: Option<(usize, usize)>,
+    refresh_requested: bool,
     frame: Instant,
     opened: Instant,
     refreshed: Instant,
     search_pending: (String, Instant),
     size: (f32, f32),
     lan_games: Vec<crate::lan::discovery::LanGame>,
+}
+
+fn viewport_addresses(r: &Runtime, first: usize, count: usize) -> Vec<String> {
+    const MARGIN: usize = 2;
+    let start = first.saturating_sub(MARGIN).min(r.visible.len());
+    let end = first
+        .saturating_add(count)
+        .saturating_add(MARGIN)
+        .min(r.visible.len());
+    r.visible[start..end]
+        .iter()
+        .map(|&index| r.source[index].address.clone())
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -163,20 +175,11 @@ impl Browser {
         let state = persistence::load_state(&home)?;
         let catalog = Catalog::load(&home, &state.metadata)?;
         let service = PingService::new(state.settings.concurrent_pings)?;
-        service.refresh(
-            catalog
-                .servers
-                .iter()
-                .chain(&state.recent)
-                .map(|s| s.address.clone()),
-            false,
-        );
         let now = Instant::now();
         let selection = state.view.selected.clone().into_iter().collect();
         let runtime = Runtime {
             service,
             directory: online::Directory::default(),
-            feedback: feedback::Sender::default(),
             statuses: HashMap::new(),
             history: HashMap::new(),
             icons: RefCell::default(),
@@ -188,7 +191,8 @@ impl Browser {
             detail_scroll: Scroll::default(),
             detail_height: 0.0,
             smooth: 0.0,
-            prioritized_row: usize::MAX,
+            ping_window: None,
+            refresh_requested: false,
             frame: now,
             opened: now,
             refreshed: now,
@@ -320,12 +324,12 @@ impl Browser {
         if matches!(self.modal, Modal::Edit { .. }) {
             return;
         }
-        if matches!(self.state.view.tab, Tab::Lan | Tab::Discover) {
+        if matches!(self.state.view.tab, Tab::Lan | Tab::Discover | Tab::Recent) {
             let r = self.runtime.get_mut();
-            if self.state.view.tab == Tab::Discover { r.directory.cancel(); }
-            r.service
-                .refresh(r.source.iter().map(|s| s.address.clone()), true);
-            r.refreshed = Instant::now();
+            if self.state.view.tab == Tab::Discover {
+                r.directory.refresh();
+            }
+            r.refresh_requested = true;
             return;
         }
         // Reload before a mutation if another launcher changed the file. Modern
@@ -340,26 +344,17 @@ impl Browser {
         }
         let r = self.runtime.get_mut();
         r.statuses.clear();
-        r.refreshed = Instant::now();
-        r.service.refresh(
-            self.catalog
-                .servers
-                .iter()
-                .chain(&self.state.recent)
-                .map(|s| s.address.clone()),
-            true,
-        );
+        r.refresh_requested = true;
         self.changed();
     }
     fn sync(&self, r: &mut Runtime) {
-        r.feedback.poll();
-        if let Modal::Feedback {category,text}=&self.modal { r.feedback.edited(*category,text); }
         let current_filter = (
             self.state
                 .view
                 .filters
                 .tags
                 .first()
+                .filter(|tag| !query::offline_access_tag(tag))
                 .cloned()
                 .unwrap_or_default(),
             if self.state.view.filters.version == query::Version::Specific {
@@ -408,23 +403,23 @@ impl Browser {
             }
             r.statuses.insert(address, status);
         }
-        if self.state.settings.refresh_seconds > 0
-            && r.refreshed.elapsed() >= Duration::from_secs(self.state.settings.refresh_seconds)
-        {
-            r.service
-                .refresh(r.source.iter().map(|s| s.address.clone()), true);
+        let force_refresh = r.refresh_requested
+            || self.state.settings.refresh_seconds > 0
+                && r.refreshed.elapsed() >= Duration::from_secs(self.state.settings.refresh_seconds);
+        if force_refresh {
             r.refreshed = Instant::now();
+            r.refresh_requested = false;
         }
         let games = if self.state.view.tab == Tab::Lan {
             self.lan.games()
         } else {
             Vec::new()
         };
-        if directory_changed
+        let source_changed = directory_changed
             || r.revision != self.revision
             || r.view.tab != self.state.view.tab
-            || games != r.lan_games
-        {
+            || games != r.lan_games;
+        if source_changed {
             r.source = match self.state.view.tab {
                 Tab::Lan => games
                     .iter()
@@ -447,12 +442,13 @@ impl Browser {
                             .clone()
                     })
                     .collect(),
-                Tab::Discover => r
+                Tab::Discover if self.state.settings.online_directory => r
                     .directory
                     .page
                     .as_ref()
                     .map(|p| p.servers.clone())
                     .unwrap_or_default(),
+                Tab::Discover => Vec::new(),
                 _ => self.catalog.servers.clone(),
             };
             let tab_changed = r.view.tab != self.state.view.tab;
@@ -464,12 +460,6 @@ impl Browser {
                         .entry(address.clone())
                         .or_insert_with(|| status.clone());
                 }
-                r.service
-                    .refresh(page.servers.iter().map(|s| s.address.clone()), false);
-            }
-            if games != r.lan_games {
-                r.service
-                    .refresh(r.source.iter().map(|s| s.address.clone()), false);
             }
             r.lan_games = games;
             r.revision = self.revision;
@@ -482,7 +472,8 @@ impl Browser {
         if r.search_pending.1.elapsed() < Duration::from_millis(60) {
             view.search.clone_from(&r.view.search);
         }
-        if view != r.view {
+        let view_changed = view != r.view;
+        if view_changed {
             dirty = true;
         }
         if dirty {
@@ -507,18 +498,27 @@ impl Browser {
             r.smooth + (r.scroll.amount - r.smooth) * (dt * 18.0).min(1.0)
         };
         let first = (r.smooth / draw::ROW).floor().max(0.0) as usize;
-        if dirty || first != r.prioritized_row {
-            let count = ((bottom - top) / draw::ROW).ceil().max(0.0) as usize + 1;
-            r.service.prioritize(
-                r.visible
-                    .iter()
-                    .skip(first)
-                    .take(count)
-                    .map(|&i| r.source[i].address.clone()),
-            );
-            r.prioritized_row = first;
-        }
         let count = ((bottom - top) / draw::ROW).ceil().max(0.0) as usize + 1;
+        let window = (first, count);
+        if matches!(self.state.view.tab, Tab::Saved | Tab::Favorites) {
+            if source_changed || force_refresh || r.ping_window.is_none() {
+                r.service.refresh(self.catalog.servers.iter().map(|s| s.address.clone()), force_refresh);
+            }
+            if source_changed || force_refresh || view_changed || r.ping_window != Some(window) {
+                r.service.prioritize(r.visible.iter().skip(first).take(count).map(|&i| r.source[i].address.clone()));
+            }
+            r.ping_window = Some(window);
+        } else if !matches!(self.modal, Modal::Main) {
+            if r.ping_window.take().is_some() || source_changed {
+                r.service.refresh([], false);
+            }
+        } else if source_changed || view_changed || force_refresh || r.ping_window != Some(window) {
+            // Results can change sorting and filtering. A result alone must
+            // never schedule another window and walk the entire directory.
+            let addresses = viewport_addresses(r, first, count);
+            r.service.refresh(addresses, force_refresh);
+            r.ping_window = Some(window);
+        }
         if self.state.view.tab == Tab::Discover
             && self.state.settings.online_directory
             && r.directory.can_request_next()
@@ -722,8 +722,6 @@ impl Browser {
                         135 => f.language.clear(),
                         136 => f.region.clear(),
                         137 => f.favorites = false,
-                        138 => f.auth = None,
-                        139 => f.joinable = false,
                         140 => f.group.clear(),
                         _ => {}
                     }
@@ -846,22 +844,7 @@ impl Browser {
                 35 => {
                     if self.state.settings.online_directory {
                         let r = self.runtime.get_mut();
-                        r.directory.cancel();
-                        r.scroll = Scroll::default();
-                        let filters = &self.state.view.filters;
-                        r.directory.request(
-                            self.home.clone(),
-                            true,
-                            core::directory::Request {
-                                page: 1,
-                                tag: filters.tags.first().cloned().unwrap_or_default(),
-                                version: if filters.version == query::Version::Specific {
-                                    filters.specific_version.clone()
-                                } else {
-                                    String::new()
-                                },
-                            },
-                        );
+                        r.directory.refresh();
                     } else {
                         self.show(Modal::Consent);
                     }

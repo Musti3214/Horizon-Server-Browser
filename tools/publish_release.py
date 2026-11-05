@@ -51,14 +51,14 @@ def publish(tag, title, body, files, beta):
 
 metadata = json.loads((ROOT / 'website/releases.json').read_text())
 native = metadata['horizon']
-publish('v2.2.0', 'Server Atlas — Horizon 2.2.0',
+publish('v' + native['version'], 'Server Atlas — Horizon ' + native['version'],
     'Native Rust edition, updated and tested on Horizon Nightly 2026-11-04 · 6475f62, for Minecraft Java 26.3. '
     'Install the .hnmod using the Horizon launcher and build the matching instance. '
-    'Uses the official native mod mechanism without a separate host patch. Updated for the client library split, scroll and keyboard actions, and DNS resolver API. '
+    'Discover is opt-in and probes only visible servers and nearby rows. Offline-access discovery options and listings were removed. '
     'Source and exact tested revision pins are in mod/. Native code runs with your user permissions. '
-    'Automatic email delivery is unconfigured.\n\n'
+    'Feedback saves local drafts.\n\n'
     'Website: https://musti3214.github.io/Horizon-Server-Browser/\n'
-    'Validation: https://github.com/' + REPO + '/blob/main/docs/VALIDATION.md',
+    'Validation: https://github.com/' + REPO + '/blob/' + os.environ['GITHUB_SHA'] + f"/mod/VALIDATION-{native['version']}.md",
     [(ROOT / 'downloads' / native['name'], native['sha256'])], False)
 java = metadata['java']
 publish('v2.2.0-beta.1', 'Server Atlas — Fabric & Forge 2.2.0 beta',
