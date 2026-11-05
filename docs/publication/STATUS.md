@@ -18,8 +18,16 @@ Install through the normal native mod workflow and rebuild the selected Horizon 
 
 ## Official catalogs and community posts
 
-**No official Horizon registry PR, approval or listing is confirmed.** The [public review request](https://github.com/Musti3214/Horizon-Server-Browser/issues/1) was updated to 2.2.0 and the current [review kit](../horizon-registry/) was sent in the existing conversation with Horizon's published maintainer contact. The official form remains the intended submission route; it could not be completed because Chrome automation is unavailable. Every native version requires human source review.
+**Submitted through the official Horizon form:** [registry PR #248](https://github.com/horizon-rust/horizon-mods/pull/248), adding `server_browser` 2.2.0. The [official registry check](https://github.com/horizon-rust/horizon-mods/actions/runs/41939774642) passed. The PR is open and has not been merged; approval and a public catalog listing are not yet confirmed. Human source review is still required. The registry submission references the tagged 2.2.0 source and the exact native checksum above.
 
-Modrinth and CurseForge projects have not been created or submitted by this session. No Reddit posts have been published. Prepared descriptions and actual game captures are available for those submissions. A GitHub release or a local launcher build does not create a marketplace listing.
+Community introductions were published and their individual pages verified on 5 November 2026:
+
+- [r/ModdedMinecraft — with two real game screenshots](https://www.reddit.com/r/ModdedMinecraft/comments/1xo4itr/server_atlas_a_minecraftstyle_multiplayer_browser/)
+- [r/feedthebeast — multiplayer workflow showcase](https://www.reddit.com/r/feedthebeast/comments/1xo4m7b/server_atlas_local_notes_favorites_and_reusable/)
+- [r/fabricmc — Fabric beta introduction](https://www.reddit.com/r/fabricmc/comments/1xo4n5a/server_atlas_for_fabric_263_a_familiar/)
+- [r/MinecraftForge — Forge beta showcase and test limits](https://www.reddit.com/r/MinecraftForge/comments/1xo4o5k/server_atlas_forge_263_beta_saved_server_groups/)
+
+Modrinth and CurseForge projects have not been created or submitted by this session. A GitHub release or a local launcher build does not create a marketplace listing. Reddit posts remain subject to community moderation.
 
 The project was developed and publication materials were prepared with Codex assistance at the owner's request. Feedback currently saves local drafts; automatic email delivery is unconfigured.
+
