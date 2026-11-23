@@ -14,7 +14,7 @@ repositories {
     maven fg.minecraftLibsMaven
     mavenCentral()
 }
-dependencies { implementation minecraft.dependency('net.minecraftforge:forge:26.3-66.1.5') }
+dependencies { implementation minecraft.dependency('net.minecraftforge:forge:26.3-66.1.9') }
 minecraft {
     runs {
         configureEach {
